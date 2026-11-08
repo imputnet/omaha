@@ -10,10 +10,32 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 crx3 = { path = "../crates/crx3" }
+omaha-protocol = { path = "../crates/omaha-protocol" }
 
 [[bin]]
 name = "crx3_verify"
 path = "fuzz_targets/crx3_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v4_request"
+path = "fuzz_targets/v4_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v4_response"
+path = "fuzz_targets/v4_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "update2_query"
+path = "fuzz_targets/update2_query.rs"
 test = false
 doc = false
 bench = false

@@ -61,6 +61,14 @@ pub fn string_constant(src: &str, name: &str) -> String {
         .1
 }
 
+/// The value of a raw string constant, `NAME[] = R"(...)";`.
+pub fn raw_string_constant(src: &str, name: &str) -> String {
+    let start = find_constant(src, name);
+    let open = start + src[start..].find("R\"(").expect("raw string start") + 3;
+    let close = open + src[open..].find(")\"").expect("raw string end");
+    src[open..close].to_owned()
+}
+
 /// The bytes of `NAME = std::to_array<uint8_t>({0x.., ...});`.
 pub fn byte_array(src: &str, name: &str) -> Vec<u8> {
     let start = find_constant(src, name);

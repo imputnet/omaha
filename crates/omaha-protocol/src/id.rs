@@ -27,3 +27,52 @@ mod tests {
         assert!(!is_valid_crx_id("JPIGNAIBIIEMHNGFJKCPOKKAMFFKNABF"));
     }
 }
+
+/// An application ID: an extension or component ID, or a GUID-style ID for
+/// installed software such as a browser. Non-empty printable ASCII.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AppId(String);
+
+impl AppId {
+    pub fn new(id: impl Into<String>) -> Option<Self> {
+        let id = id.into();
+        (!id.is_empty() && id.bytes().all(|b| b.is_ascii_graphic())).then_some(AppId(id))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether this is an extension or component ID.
+    pub fn is_crx_id(&self) -> bool {
+        is_valid_crx_id(&self.0)
+    }
+}
+
+impl std::fmt::Display for AppId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+#[cfg(test)]
+mod app_id_tests {
+    use super::AppId;
+
+    #[test]
+    fn validates() {
+        assert!(
+            AppId::new("jpignaibiiemhngfjkcpokkamffknabf")
+                .unwrap()
+                .is_crx_id()
+        );
+        assert!(
+            !AppId::new("{8A69D345-D564-463C-AFF1-A69D9E530F96}")
+                .unwrap()
+                .is_crx_id()
+        );
+        for bad in ["", "a b", "a\nb", "é"] {
+            assert_eq!(AppId::new(bad), None, "{bad:?}");
+        }
+    }
+}
