@@ -174,6 +174,22 @@ impl Index {
         trusted: &[&dyn Verifier],
         now: SystemTime,
     ) -> Result<Index, OpenError> {
+        let index = Index::verify(envelope, trusted)?;
+        let now = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+
+        if now >= index.expires {
+            return Err(OpenError::Expired {
+                expires: index.expires,
+            });
+        }
+
+        Ok(index)
+    }
+
+    /// Checks a signed index's signatures like [`open`](Self::open), but
+    /// not its expiry. For a publisher building the next index on top of
+    /// one that may have expired; a server should use `open`.
+    pub fn verify(envelope: &[u8], trusted: &[&dyn Verifier]) -> Result<Index, OpenError> {
         let envelope: Envelope =
             serde_json::from_slice(envelope).map_err(|e| OpenError::Envelope(e.to_string()))?;
 
@@ -207,16 +223,7 @@ impl Index {
             return Err(OpenError::Untrusted);
         }
 
-        let index = Index::from_json(&payload).map_err(OpenError::Index)?;
-        let now = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-
-        if now >= index.expires {
-            return Err(OpenError::Expired {
-                expires: index.expires,
-            });
-        }
-
-        Ok(index)
+        Index::from_json(&payload).map_err(OpenError::Index)
     }
 }
 

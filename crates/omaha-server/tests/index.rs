@@ -130,12 +130,10 @@ fn open_needs_a_trusted_fresh_signature() {
         Index::open(&index.sign(&[&other]).unwrap(), &[&key], now()),
         Err(OpenError::Untrusted)
     );
+    let expired = UNIX_EPOCH + Duration::from_secs(NOW + 86400);
+    assert_eq!(Index::verify(&signed, &[&key]), Ok(index.clone()));
     assert_eq!(
-        Index::open(
-            &signed,
-            &[&key],
-            UNIX_EPOCH + Duration::from_secs(NOW + 86400)
-        ),
+        Index::open(&signed, &[&key], expired),
         Err(OpenError::Expired {
             expires: NOW + 86400
         })
