@@ -14,6 +14,7 @@ exclude = ["tests/chromium.rs"]
 serde.workspace = true
 serde_json.workspace = true
 form_urlencoded.workspace = true
+quick-xml.workspace = true
 
 [dev-dependencies]
 chromium-testdata.workspace = true

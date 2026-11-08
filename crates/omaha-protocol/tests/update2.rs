@@ -201,8 +201,59 @@ fn xml_edge_cases() {
     assert!(render(diff_only).contains(r#"<updatecheck status="error-inexpressible"/>"#));
 
     let mut info = UpdateCheckResponse::new(Outcome::NoUpdate);
-    info.info = Some("a\u{1}b\nc".into());
-    assert!(render(info).contains("info=\"a\u{fffd}b&#10;c\""));
+    info.info = Some("a\u{1}b\u{ffff}c\td\ne".into());
+    assert!(render(info).contains("info=\"a\u{fffd}b\u{fffd}c d e\""));
+}
+
+#[test]
+fn xml_parses_back_with_a_real_parser() {
+    use quick_xml::Reader;
+    use quick_xml::events::Event;
+
+    let tricky = "a&b<c>d\"e'f";
+    let mut check = update(&["https://cdn.example/a.crx?x=1&y=2"], 7);
+    check.info = Some(tricky.into());
+    check
+        .attributes
+        .insert(AttributeName::new("_note").unwrap(), tricky.into());
+    let mut app = AppResponse::new(id("aaaa"), AppStatus::Ok);
+    app.updatecheck = Some(check);
+    let xml = update2::encode_xml(&Response {
+        apps: vec![app],
+        server: Some("<prod>".into()),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let mut reader = Reader::from_str(&xml);
+    let mut attributes = std::collections::BTreeMap::new();
+    loop {
+        match reader.read_event().unwrap() {
+            Event::Eof => break,
+            Event::Start(e) | Event::Empty(e) => {
+                let name = e.name().as_ref().to_owned();
+                for a in e.attributes() {
+                    let a = a.unwrap();
+                    let key = a.key.as_ref().to_owned();
+                    attributes.insert(
+                        format!("{name}.{key}"),
+                        a.normalized_value(quick_xml::XmlVersion::Explicit1_0)
+                            .unwrap()
+                            .into_owned(),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(attributes["gupdate.server"], "<prod>");
+    assert_eq!(
+        attributes["updatecheck.codebase"],
+        "https://cdn.example/a.crx?x=1&y=2"
+    );
+    assert_eq!(attributes["updatecheck.info"], tricky);
+    assert_eq!(attributes["updatecheck._note"], tricky);
+    assert_eq!(attributes["updatecheck.size"], "7");
 }
 
 #[test]

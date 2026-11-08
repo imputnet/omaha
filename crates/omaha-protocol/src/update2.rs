@@ -6,7 +6,9 @@ use crate::limits::{DecodeError, Limits};
 use crate::model::*;
 use crate::validate::{EncodeError, validate};
 use crate::{AppId, Version};
-use std::fmt::Write;
+use quick_xml::Writer;
+use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
+use std::borrow::Cow;
 
 /// How the client wants the answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,27 +117,29 @@ fn decode_x(x: &str, lang: &Option<String>, limits: &Limits) -> Result<App, Deco
 
 const XMLNS: &str = "http://www.google.com/update2/response";
 
-fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            '\t' | '\n' | '\r' => {
-                let _ = write!(out, "&#{};", u32::from(c));
-            }
-            c if c.is_control() => out.push('\u{fffd}'),
-            c => out.push(c),
-        }
+/// Prepares an attribute value: characters XML 1.0 doesn't allow (most C0
+/// controls, U+FFFE, U+FFFF) become U+FFFD, and tabs and line breaks become
+/// spaces, which is what XML parsers turn them into in attribute values.
+/// Escaping itself is left to quick-xml.
+fn clean(s: &str) -> Cow<'_, str> {
+    let map = |c: char| match c {
+        '\t' | '\n' | '\r' => ' ',
+        c if c < ' ' || matches!(c, '\u{fffe}' | '\u{ffff}') => '\u{fffd}',
+        c => c,
+    };
+    if s.chars().all(|c| map(c) == c) {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned(s.chars().map(map).collect())
     }
-    out
 }
 
-fn attr(out: &mut String, name: &str, value: &str) {
-    let _ = write!(out, " {name}=\"{}\"", escape(value));
+fn attr(element: &mut BytesStart<'_>, name: &str, value: &str) {
+    element.push_attribute((name, &*clean(value)));
+}
+
+fn write<'a>(w: &mut Writer<Vec<u8>>, event: impl Into<Event<'a>>) {
+    w.write_event(event).expect("writing to a Vec doesn't fail");
 }
 
 /// The full package of an update: the first pipeline that is a plain
@@ -153,66 +157,71 @@ fn full_package(pipelines: &[Pipeline]) -> Option<(&[String], &crate::Sha256, u6
 /// `error-inexpressible`.
 pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
     validate(response)?;
-    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-    out.push_str("<gupdate");
-    attr(&mut out, "xmlns", XMLNS);
-    attr(&mut out, "protocol", "2.0");
+    let mut w = Writer::new(Vec::new());
+    write(
+        &mut w,
+        Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
+    );
+    let mut root = BytesStart::new("gupdate");
+    attr(&mut root, "xmlns", XMLNS);
+    attr(&mut root, "protocol", "2.0");
     if let Some(server) = &response.server {
-        attr(&mut out, "server", server);
+        attr(&mut root, "server", server);
     }
-    out.push('>');
+    write(&mut w, Event::Start(root));
     if let Some(d) = response.daystart {
-        let _ = write!(out, "<daystart elapsed_days=\"{}\"", d.elapsed_days);
+        let mut daystart = BytesStart::new("daystart");
+        attr(&mut daystart, "elapsed_days", &d.elapsed_days.to_string());
         if let Some(seconds) = d.elapsed_seconds {
-            let _ = write!(out, " elapsed_seconds=\"{seconds}\"");
+            attr(&mut daystart, "elapsed_seconds", &seconds.to_string());
         }
-        out.push_str("/>");
+        write(&mut w, Event::Empty(daystart));
     }
     for app in &response.apps {
-        out.push_str("<app");
-        attr(&mut out, "appid", app.appid.as_str());
-        attr(&mut out, "status", app.status.as_str());
+        let mut element = BytesStart::new("app");
+        attr(&mut element, "appid", app.appid.as_str());
+        attr(&mut element, "status", app.status.as_str());
         match (&app.status, &app.updatecheck) {
             (AppStatus::Ok, Some(u)) => {
-                out.push('>');
-                encode_updatecheck(&mut out, u);
-                out.push_str("</app>");
+                write(&mut w, Event::Start(element));
+                write(&mut w, Event::Empty(updatecheck(u)));
+                write(&mut w, Event::End(BytesEnd::new("app")));
             }
-            _ => out.push_str("/>"),
+            _ => write(&mut w, Event::Empty(element)),
         }
     }
-    out.push_str("</gupdate>");
-    Ok(out)
+    write(&mut w, Event::End(BytesEnd::new("gupdate")));
+    Ok(String::from_utf8(w.into_inner()).expect("quick-xml writes UTF-8"))
 }
 
-fn encode_updatecheck(out: &mut String, u: &UpdateCheckResponse) {
-    out.push_str("<updatecheck");
+fn updatecheck(u: &UpdateCheckResponse) -> BytesStart<'static> {
+    let mut e = BytesStart::new("updatecheck");
     match &u.outcome {
-        Outcome::NoUpdate => attr(out, "status", "noupdate"),
+        Outcome::NoUpdate => attr(&mut e, "status", "noupdate"),
         Outcome::Update {
             nextversion,
             pipelines,
         } => match full_package(pipelines) {
             Some((urls, hash, size)) => {
-                attr(out, "status", "ok");
-                attr(out, "codebase", &urls[0]);
-                attr(out, "version", &nextversion.to_string());
-                attr(out, "hash_sha256", &hash.to_string());
+                attr(&mut e, "status", "ok");
+                attr(&mut e, "codebase", &urls[0]);
+                attr(&mut e, "version", &nextversion.to_string());
+                attr(&mut e, "hash_sha256", &hash.to_string());
                 if i32::try_from(size).is_ok_and(|s| s > 0) {
-                    attr(out, "size", &size.to_string());
+                    attr(&mut e, "size", &size.to_string());
                 }
             }
-            None => attr(out, "status", UpdateCheckError::Inexpressible.as_str()),
+            None => attr(&mut e, "status", UpdateCheckError::Inexpressible.as_str()),
         },
-        Outcome::Error(e) => attr(out, "status", e.as_str()),
+        Outcome::Error(err) => attr(&mut e, "status", err.as_str()),
     }
     if let Some(info) = &u.info {
-        attr(out, "info", info);
+        attr(&mut e, "info", info);
     }
     for (name, value) in &u.attributes {
-        attr(out, name.as_str(), value);
+        attr(&mut e, name.as_str(), value);
     }
-    out.push_str("/>");
+    e
 }
 
 /// Where to redirect a `response=redirect` request: the full package's first
