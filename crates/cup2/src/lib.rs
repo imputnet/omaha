@@ -123,10 +123,10 @@ impl Ticket {
         }
         let key_id = key_id.parse()?;
         let request_hash: [u8; 32] = Sha256::digest(body).into();
-        if let Some(hreq) = cup2hreq {
-            if hex::decode(hreq).as_deref() != Some(&request_hash[..]) {
-                return Err(Error::RequestHashMismatch);
-            }
+        if let Some(hreq) = cup2hreq
+            && hex::decode(hreq).as_deref() != Some(&request_hash[..])
+        {
+            return Err(Error::RequestHashMismatch);
         }
         Ok(Ticket {
             key_id,

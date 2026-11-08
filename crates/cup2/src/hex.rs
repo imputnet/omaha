@@ -8,7 +8,7 @@ pub(crate) fn encode(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn decode(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     s.as_bytes()
