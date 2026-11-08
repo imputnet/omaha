@@ -51,6 +51,18 @@ pipeline first when the client has a CRX to patch from. `StaticIndex` serves
 one as a source and swaps in newer ones while the server runs, refusing
 older serials.
 
+## Serving a feed
+
+With the `cli` feature, `omaha-server serve` answers update checks from a
+feed published with [omaha-publish](https://crates.io/crates/omaha-publish),
+reloading its index every few minutes:
+
+```sh
+cargo install omaha-server --features cli
+omaha-server serve --index https://dl.example/feed/index.json \
+    --trust index.pub.pem --cup-key 16=cup-mldsa.pem
+```
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or

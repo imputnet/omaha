@@ -1,0 +1,266 @@
+//! `omaha-server`: answers update checks from a signed release index.
+
+use clap::{Parser, Subcommand};
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
+use hyper_util::service::TowerToHyperService;
+use object_store::path::Path as StorePath;
+use object_store::{ObjectStore, ObjectStoreExt};
+use omaha_server::index::aws_lc::EcdsaKey;
+use omaha_server::{Endpoint, Replaced, StaticIndex};
+use std::error::Error;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::Duration;
+use tokio::net::TcpListener;
+
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+/// Serve Chromium's update protocols from a signed release index.
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Answer Omaha 4 and update2 requests on every path, from the index
+    /// at `--index`, reloaded on a timer.
+    Serve {
+        /// The signed index: `https://…/index.json`, `s3://bucket/…/index.json`
+        /// (configured through the usual `AWS_*` variables) or
+        /// `file:///…/index.json`.
+        #[arg(long)]
+        index: String,
+        /// A public key (SPKI PEM) the index must be signed by. Repeat to
+        /// accept several.
+        #[arg(long, required = true)]
+        trust: Vec<PathBuf>,
+        /// Where clients download files from, tried in order. Defaults to
+        /// the index's directory when `--index` is an HTTP(S) URL.
+        #[arg(long)]
+        base: Vec<String>,
+        /// Sign responses with this CUP key: `<version>=<key.pem>`, an
+        /// ML-DSA-44 or ECDSA P-256 PKCS#8 key. Repeat for several.
+        #[arg(long)]
+        cup_key: Vec<String>,
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        listen: SocketAddr,
+        /// Seconds between index reloads.
+        #[arg(long, default_value_t = 300)]
+        reload: u64,
+        /// The `server` value in responses.
+        #[arg(long)]
+        server_name: Option<String>,
+    },
+}
+
+fn read_pem(path: &Path, label: &str) -> Result<Vec<u8>> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (found, der) =
+        pem_rfc7468::decode_vec(text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
+
+    if found != label {
+        return Err(format!("{}: expected {label}, found {found}", path.display()).into());
+    }
+
+    Ok(der)
+}
+
+fn cup_server(keys: &[String]) -> Result<Option<cup2::Server>> {
+    if keys.is_empty() {
+        return Ok(None);
+    }
+
+    let mut server = cup2::Server::new();
+
+    for key in keys {
+        let (version, path) = key
+            .split_once('=')
+            .ok_or_else(|| format!("--cup-key {key}: expected <version>=<key.pem>"))?;
+        let version: u32 = version
+            .parse()
+            .map_err(|_| format!("--cup-key {key}: invalid version"))?;
+        let der = read_pem(Path::new(path), "PRIVATE KEY")?;
+
+        server = match cup2::aws_lc::MlDsa44Signer::from_pkcs8(version, &der) {
+            Ok(signer) => server.with(signer),
+            Err(_) => server.with(
+                cup2::aws_lc::EcdsaSigner::from_pkcs8(version, &der)
+                    .map_err(|e| format!("--cup-key {key}: {e}"))?,
+            ),
+        };
+    }
+
+    Ok(Some(server))
+}
+
+fn open(index: &str) -> Result<(Box<dyn ObjectStore>, StorePath)> {
+    let url = url::Url::parse(index).map_err(|e| format!("--index {index}: {e}"))?;
+    let options = std::env::vars().filter(|(key, _)| key.starts_with("AWS_"));
+    Ok(object_store::parse_url_opts(&url, options)?)
+}
+
+fn default_bases(index: &str) -> Vec<String> {
+    let http = index.starts_with("https://") || index.starts_with("http://");
+
+    match index.rsplit_once('/') {
+        Some((dir, _)) if http => vec![format!("{dir}/")],
+        _ => Vec::new(),
+    }
+}
+
+async fn reload(store: &dyn ObjectStore, path: &StorePath, index: &StaticIndex, url: &str) {
+    let bytes = match store.get(path).await {
+        Ok(result) => result.bytes().await,
+        Err(e) => Err(e),
+    };
+
+    match bytes
+        .map_err(|e| e.to_string())
+        .and_then(|b| index.replace(&b).map_err(|e| e.to_string()))
+    {
+        Ok(Replaced::Loaded { serial }) => eprintln!("loaded index serial {serial}"),
+        Ok(Replaced::Unchanged) => {}
+        Err(e) => eprintln!("{url}: {e}"),
+    }
+
+    if index.is_stale() {
+        eprintln!("{url}: the loaded index has expired; serving it until a newer one loads");
+    }
+}
+
+async fn shutdown() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        if let Ok(mut term) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = term.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            }
+            return;
+        }
+    }
+
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn serve(
+    index: String,
+    trust: Vec<PathBuf>,
+    base: Vec<String>,
+    cup_key: Vec<String>,
+    listen: SocketAddr,
+    reload_secs: u64,
+    server_name: Option<String>,
+) -> Result<()> {
+    let bases = if base.is_empty() {
+        default_bases(&index)
+    } else {
+        base
+    };
+
+    if bases.is_empty() {
+        return Err("--base is required unless --index is an HTTP(S) URL".into());
+    }
+
+    let mut builder = StaticIndex::builder(bases);
+
+    for path in &trust {
+        builder = builder.trust(EcdsaKey::from_spki(&read_pem(path, "PUBLIC KEY")?)?);
+    }
+
+    let source = builder.build();
+    let mut endpoint = Endpoint::builder().fallback(source.clone());
+
+    if let Some(cup) = cup_server(&cup_key)? {
+        endpoint = endpoint.cup(cup);
+    }
+
+    if let Some(name) = server_name {
+        endpoint = endpoint.server_name(name);
+    }
+
+    let endpoint = endpoint.build();
+    let (store, path) = open(&index)?;
+    reload(store.as_ref(), &path, &source, &index).await;
+
+    let reloader = source.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(reload_secs.max(1)));
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+            reload(store.as_ref(), &path, &reloader, &index).await;
+        }
+    });
+
+    let listener = TcpListener::bind(listen).await?;
+    eprintln!("listening on {}", listener.local_addr()?);
+    let stop = shutdown();
+    tokio::pin!(stop);
+
+    loop {
+        let (stream, _) = tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok(accepted) => accepted,
+                Err(e) => {
+                    eprintln!("accept: {e}");
+                    continue;
+                }
+            },
+            _ = &mut stop => return Ok(()),
+        };
+        let service = TowerToHyperService::new(endpoint.clone());
+        tokio::spawn(async move {
+            let _ = http1::Builder::new()
+                .serve_connection(TokioIo::new(stream), service)
+                .await;
+        });
+    }
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let result = match Cli::parse().command {
+        Command::Serve {
+            index,
+            trust,
+            base,
+            cup_key,
+            listen,
+            reload,
+            server_name,
+        } => serve(index, trust, base, cup_key, listen, reload, server_name).await,
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("omaha-server: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_to_the_index_directory_over_http() {
+        assert_eq!(
+            default_bases("https://crls.example/feed/standard/index.json"),
+            ["https://crls.example/feed/standard/"]
+        );
+        assert!(default_bases("s3://bucket/feed/index.json").is_empty());
+        assert!(default_bases("file:///srv/feed/index.json").is_empty());
+    }
+}

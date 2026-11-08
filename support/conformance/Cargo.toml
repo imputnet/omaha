@@ -15,8 +15,8 @@ object_store = { workspace = true, features = ["fs"] }
 http.workspace = true
 http-body-util.workspace = true
 bytes.workspace = true
-hyper = { version = "1", features = ["server", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
+hyper.workspace = true
+hyper-util.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "process", "time"] }
 tempfile.workspace = true
 clap.workspace = true

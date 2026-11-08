@@ -24,12 +24,32 @@ serde_json.workspace = true
 base64.workspace = true
 sha2.workspace = true
 aws-lc-rs = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "macros", "net", "time", "signal"] }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true, features = ["service"] }
+object_store = { workspace = true, optional = true, features = ["fs", "aws", "http"] }
+url = { workspace = true, optional = true }
+pem-rfc7468 = { workspace = true, optional = true }
 
 [features]
 default = ["aws-lc"]
 aws-lc = ["dep:aws-lc-rs"]
+cli = [
+    "aws-lc",
+    "cup2/aws-lc",
+    "dep:clap",
+    "dep:tokio",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:object_store",
+    "dep:url",
+    "dep:pem-rfc7468",
+]
 
 [dev-dependencies]
+tempfile.workspace = true
+pem-rfc7468.workspace = true
 cup2 = { workspace = true, features = ["aws-lc"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
@@ -43,3 +63,12 @@ required-features = ["aws-lc"]
 [[test]]
 name = "static_index"
 required-features = ["aws-lc"]
+
+[[bin]]
+name = "omaha-server"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "serve"
+required-features = ["cli"]

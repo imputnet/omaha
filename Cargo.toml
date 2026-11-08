@@ -23,6 +23,9 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 object_store = { version = "0.14", default-features = false }
 clap = { version = "4", features = ["derive"] }
 pem-rfc7468 = { version = "1", features = ["alloc"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+url = "2"
 quick-xml = { version = "0.42", default-features = false }
 http = "1"
 http-body = "1"
