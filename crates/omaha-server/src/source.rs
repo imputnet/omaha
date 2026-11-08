@@ -1,5 +1,5 @@
 use http::HeaderMap;
-use omaha_protocol::{App, AppResponse, Client};
+use omaha_protocol::{App, AppResponse, Client, Protocol};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -10,6 +10,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct Check<'a> {
+    /// The wire format the request arrived in.
+    pub protocol: Protocol,
     pub client: &'a Client,
     /// The apps routed to the source, in request order.
     pub apps: &'a [&'a App],
@@ -19,8 +21,14 @@ pub struct Check<'a> {
 }
 
 impl<'a> Check<'a> {
-    pub fn new(client: &'a Client, apps: &'a [&'a App], headers: &'a HeaderMap) -> Self {
+    pub fn new(
+        protocol: Protocol,
+        client: &'a Client,
+        apps: &'a [&'a App],
+        headers: &'a HeaderMap,
+    ) -> Self {
         Check {
+            protocol,
             client,
             apps,
             headers,

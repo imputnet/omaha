@@ -374,7 +374,12 @@ impl Endpoint {
                 .collect();
             Some(async move {
                 let results = source
-                    .check(Check::new(&request.client, &apps, headers))
+                    .check(Check::new(
+                        request.protocol,
+                        &request.client,
+                        &apps,
+                        headers,
+                    ))
                     .await;
                 (route, results)
             })
