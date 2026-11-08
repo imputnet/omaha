@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/imputnet/omaha/compare/cup2-v0.2.0...cup2-v0.3.0) - 2026-11-08
+
+### Changed
+
+- bump crx3 and cup2 to 0.3.0
+- deny panicking calls in library code
+- release ([#5](https://github.com/imputnet/omaha/pull/5))
+- reformat
+- refuse empty bodies and wrongly sized signatures
+- treat an empty cup2hreq as absent
+- raise msrv to 1.95
+
 ## [0.2.0](https://github.com/imputnet/omaha/compare/cup2-v0.1.0...cup2-v0.2.0) - 2026-11-08
 
 ### Changed
