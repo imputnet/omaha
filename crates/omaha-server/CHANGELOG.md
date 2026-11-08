@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.3...omaha-server-v0.1.4) - 2026-11-08
+
+### Changed
+
+- count requests, outcomes and daily actives
+
 ## [0.1.3](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.2...omaha-server-v0.1.3) - 2026-11-08
 
 ### Changed
