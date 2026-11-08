@@ -13,8 +13,3 @@ commit_parsers = [
     { message = "^.*: fix", group = "Fixed" },
     { message = "^.*", group = "Changed" },
 ]
-
-[[package]]
-name = "omaha"
-release = false
-
