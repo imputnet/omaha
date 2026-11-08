@@ -8,4 +8,4 @@ step() {
 }
 
 step "auditing workflows"
-pipx run zizmor .github/workflows
+pipx run zizmor .github
