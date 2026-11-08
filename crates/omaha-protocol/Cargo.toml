@@ -1,0 +1,12 @@
+[package]
+name = "omaha-protocol"
+description = "Chromium update protocol (Omaha) types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories = ["parser-implementations"]
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "omaha"
+description = "Tools for Chromium's update protocol (Omaha): CRX3, CUP2, update checks and component feeds"
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+keywords.workspace = true
+
+[features]
+default = ["protocol"]
+protocol = ["dep:omaha-protocol"]
+crx3 = ["dep:crx3"]
+cup2 = ["dep:cup2"]
+diff = ["dep:omaha-diff"]
+server = ["dep:omaha-server"]
+publish = ["dep:omaha-publish"]
+full = ["protocol", "crx3", "cup2", "diff", "server", "publish"]
+
+[dependencies]
+omaha-protocol = { workspace = true, optional = true }
+crx3 = { workspace = true, optional = true }
+cup2 = { workspace = true, optional = true }
+omaha-diff = { workspace = true, optional = true }
+omaha-server = { workspace = true, optional = true }
+omaha-publish = { workspace = true, optional = true }
+
+[lints]
+workspace = true

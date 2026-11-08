@@ -1,0 +1,15 @@
+[package]
+name = "cup2"
+description = "Chromium's Client Update Protocol (CUP2): request/response signing data and proofs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+keywords = ["chromium", "cup", "omaha", "signature"]
+categories = ["cryptography"]
+
+[dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true

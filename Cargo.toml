@@ -1,0 +1,25 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+keywords = ["chromium", "omaha", "update", "crx"]
+
+[workspace.dependencies]
+sha2 = { version = "0.10", default-features = false }
+omaha-protocol = { path = "crates/omaha-protocol", version = "0.0.1" }
+crx3 = { path = "crates/crx3", version = "0.0.1" }
+cup2 = { path = "crates/cup2", version = "0.0.1" }
+omaha-diff = { path = "crates/omaha-diff", version = "0.0.1" }
+omaha-server = { path = "crates/omaha-server", version = "0.0.1" }
+omaha-publish = { path = "crates/omaha-publish", version = "0.0.1" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
