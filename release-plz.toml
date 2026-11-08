@@ -2,6 +2,10 @@
 # Publish only when a release PR is merged, not on every push to main.
 release_always = false
 pr_name = "release{% if package and version %}: {{ package }} v{{ version }}{% endif %}"
+# Tag and name releases per crate, even while only one crate is releasable,
+# so crates never collide on a plain `v0.1.0`.
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
 
 [changelog]
 commit_parsers = [
