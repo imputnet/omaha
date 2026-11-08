@@ -1,5 +1,5 @@
 use http::HeaderMap;
-use omaha_protocol::{App, AppResponse, Client, Protocol};
+use omaha_protocol::{App, AppId, AppResponse, Client, Protocol};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -46,6 +46,15 @@ pub trait Source: Send + Sync {
     /// answers apps whose answer is missing or out of place with
     /// `error-internal`.
     fn check<'a>(&'a self, check: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>>;
+
+    /// Whether metrics may use `appid` as a label. Only vouch for a bounded
+    /// set of apps, such as the ones this source publishes, since a label
+    /// per client-sent ID would let clients grow the metrics without bound.
+    /// Apps that are routed explicitly are always labelled.
+    fn labels_app(&self, appid: &AppId) -> bool {
+        let _ = appid;
+        false
+    }
 }
 
 /// Receives ping-backs, for example to count installs and failures.

@@ -201,3 +201,51 @@ fn needs_a_base_for_non_http_indexes() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("--base is required"));
 }
+
+fn get(addr: &str, path: &str) -> String {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+}
+
+#[test]
+fn exports_prometheus_metrics() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = EcdsaSigner::generate().unwrap();
+    let trust = dir.path().join("index.pub");
+    std::fs::write(&trust, pem("PUBLIC KEY", key.public_key())).unwrap();
+    write_index(dir.path(), &key, 4, "2");
+    let metrics = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().to_string()
+    };
+    let server = start(&[
+        format!("--index=file://{}/index.json", dir.path().display()),
+        format!("--trust={}", trust.display()),
+        "--base=https://dl.example/".into(),
+        format!("--metrics={metrics}"),
+        "--count-activity".into(),
+    ]);
+
+    let mut request: serde_json::Value = serde_json::from_slice(&check_request()).unwrap();
+    request["request"]["apps"][0]["ping"] = serde_json::json!({ "rd": -1, "ad": -2 });
+    let (head, _) = post(&server.addr, "/", &serde_json::to_vec(&request).unwrap());
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+
+    let scraped = get(&metrics, "/metrics");
+    for line in [
+        "omaha_index_serial 4".to_owned(),
+        r#"omaha_requests_total{protocol="v4",status="200"} 1"#.to_owned(),
+        format!(r#"omaha_update_checks_total{{app="{APP}",outcome="update"}} 1"#),
+        format!(r#"omaha_roll_calls_total{{app="{APP}"}} 1"#),
+        r#"omaha_request_duration_seconds_bucket{protocol="v4",le="+Inf"} 1"#.to_owned(),
+    ] {
+        assert!(scraped.contains(&line), "missing {line} in:\n{scraped}");
+    }
+}

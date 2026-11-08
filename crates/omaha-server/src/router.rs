@@ -49,6 +49,16 @@ impl<S: Clone + Eq + Hash> Router<S> {
         self
     }
 
+    /// Whether `appid` has a route of its own, not just the fallback.
+    pub fn is_routed(&self, appid: &str) -> bool {
+        self.routes.contains_key(appid)
+    }
+
+    /// The source `appid` goes to: its own route, else the fallback.
+    pub fn source(&self, appid: &str) -> Option<&S> {
+        self.routes.get(appid).or(self.fallback.as_ref())
+    }
+
     /// Splits the app IDs of a request by source, keeping request order so
     /// answers can be merged back in place.
     pub fn split<'a>(&self, appids: impl IntoIterator<Item = &'a str>) -> Split<S> {

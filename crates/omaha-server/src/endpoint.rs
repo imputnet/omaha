@@ -1,3 +1,4 @@
+use crate::metrics;
 use crate::router::Router;
 use crate::source::{BoxFuture, Check, PingSink, Source};
 use bytes::Bytes;
@@ -13,7 +14,7 @@ use omaha_protocol::{
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CUP_PROOF: HeaderName = HeaderName::from_static("x-cup-server-proof");
 const RETRY_AFTER: HeaderName = HeaderName::from_static("x-retry-after");
@@ -39,6 +40,8 @@ struct Inner {
     pings: Option<Box<dyn PingSink>>,
     retry_after: Option<Box<RetryAfter>>,
     clock: fn() -> SystemTime,
+    #[cfg(feature = "activity")]
+    count_activity: bool,
 }
 
 /// Configures an [`Endpoint`].
@@ -61,6 +64,8 @@ impl Endpoint {
                 pings: None,
                 retry_after: None,
                 clock: SystemTime::now,
+                #[cfg(feature = "activity")]
+                count_activity: false,
             },
         }
     }
@@ -131,6 +136,15 @@ impl EndpointBuilder {
         self
     }
 
+    /// Counts daily roll calls and active reports from the `ping` dates of
+    /// update checks, as described in [`metrics`](crate::metrics). Off by
+    /// default.
+    #[cfg(feature = "activity")]
+    pub fn count_activity(mut self, enabled: bool) -> Self {
+        self.inner.count_activity = enabled;
+        self
+    }
+
     /// The clock used for `daystart`.
     pub fn clock(mut self, clock: fn() -> SystemTime) -> Self {
         self.inner.clock = clock;
@@ -169,6 +183,14 @@ fn query_param(request: &http::Request<Bytes>, name: &str) -> Option<String> {
     form_urlencoded::parse(query.as_bytes())
         .find(|(key, _)| key == name)
         .map(|(_, value)| value.into_owned())
+}
+
+fn protocol_label(method: &Method) -> &'static str {
+    match *method {
+        Method::POST => "v4",
+        Method::GET => "update2",
+        _ => "other",
+    }
 }
 
 fn daystart(now: SystemTime) -> DayStart {
@@ -215,6 +237,8 @@ fn fit(app: &App, mut answer: AppResponse) -> AppResponse {
 impl Endpoint {
     /// Answers one request with a fully read body.
     pub async fn handle(&self, request: http::Request<Bytes>) -> http::Response<Bytes> {
+        let start = Instant::now();
+        let protocol = protocol_label(request.method());
         let mut response = match *request.method() {
             Method::POST => self.handle_v4(&request).await,
             Method::GET => self.handle_update2(&request).await,
@@ -233,6 +257,7 @@ impl Endpoint {
                 .insert(RETRY_AFTER, HeaderValue::from(secs));
         }
 
+        metrics::request(protocol, response.status().as_u16(), start.elapsed());
         response
     }
 
@@ -272,7 +297,10 @@ impl Endpoint {
 
         let proof = match &ticket {
             Some((server, ticket)) => match server.sign(ticket, &encoded) {
-                Ok(proof) => Some(proof),
+                Ok(proof) => {
+                    metrics::cup(ticket.key_id());
+                    Some(proof)
+                }
                 Err(e) => return text(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             },
             None => None,
@@ -411,14 +439,61 @@ impl Endpoint {
             }
         }
 
+        let daystart = daystart((inner.clock)());
+        let apps: Vec<AppResponse> = answers
+            .into_iter()
+            .zip(&request.apps)
+            .map(|(answer, app)| answer.unwrap_or_else(|| internal_error(app)))
+            .collect();
+
+        for (app, answer) in request.apps.iter().zip(&apps) {
+            self.record(app, answer, daystart.elapsed_days);
+        }
+
         Response {
-            apps: answers
-                .into_iter()
-                .zip(&request.apps)
-                .map(|(answer, app)| answer.unwrap_or_else(|| internal_error(app)))
-                .collect(),
-            daystart: Some(daystart((inner.clock)())),
+            apps,
+            daystart: Some(daystart),
             server: inner.server.clone(),
+        }
+    }
+
+    /// The `app` label for an app: its ID if it is routed explicitly or its
+    /// source vouches for it, else `other`.
+    fn app_label<'a>(&self, appid: &'a AppId) -> &'a str {
+        let router = &self.inner.router;
+        let vouched = router
+            .source(appid.as_str())
+            .and_then(|&index| self.inner.sources.get(index))
+            .is_some_and(|source| source.labels_app(appid));
+
+        if router.is_routed(appid.as_str()) || vouched {
+            appid.as_str()
+        } else {
+            "other"
+        }
+    }
+
+    #[cfg_attr(not(feature = "activity"), allow(unused_variables))]
+    fn record(&self, app: &App, answer: &AppResponse, today: u32) {
+        if cfg!(not(feature = "metrics")) {
+            return;
+        }
+
+        let label = self.app_label(&app.appid);
+
+        for event in &app.events {
+            metrics::event(label, event);
+        }
+
+        if app.updatecheck.is_none() {
+            return;
+        }
+
+        metrics::update_check(label, answer);
+
+        #[cfg(feature = "activity")]
+        if let (true, Some(ping)) = (self.inner.count_activity, &app.ping) {
+            metrics::activity(label, ping, today);
         }
     }
 }
@@ -448,6 +523,11 @@ where
                     endpoint.handle(request).await
                 }
                 Err(e) if e.downcast_ref::<LengthLimitError>().is_some() => {
+                    metrics::request(
+                        protocol_label(&parts.method),
+                        StatusCode::PAYLOAD_TOO_LARGE.as_u16(),
+                        Duration::ZERO,
+                    );
                     decode_error(&DecodeError::TooLarge)
                 }
                 Err(_) => text(StatusCode::BAD_REQUEST, "unreadable request body"),

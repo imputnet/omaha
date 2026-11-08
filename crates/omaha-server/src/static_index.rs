@@ -1,6 +1,6 @@
 use crate::index::{Index, OpenError, Verifier};
 use crate::source::{BoxFuture, Check, Source};
-use omaha_protocol::AppResponse;
+use omaha_protocol::{AppId, AppResponse};
 use std::fmt;
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -207,5 +207,10 @@ impl Source for StaticIndex {
             None => Vec::new(),
         };
         Box::pin(async move { answers })
+    }
+
+    fn labels_app(&self, appid: &AppId) -> bool {
+        self.current()
+            .is_some_and(|index| index.apps.contains_key(appid))
     }
 }

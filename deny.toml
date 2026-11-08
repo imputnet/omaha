@@ -12,6 +12,10 @@ confidence-threshold = 0.9
 crate = "webpki-root-certs"
 allow = ["CDLA-Permissive-2.0"]
 
+[[licenses.exceptions]]
+crate = "foldhash"
+allow = ["Zlib"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

@@ -60,8 +60,15 @@ reloading its index every few minutes:
 ```sh
 cargo install omaha-server --features cli
 omaha-server serve --index https://dl.example/feed/index.json \
-    --trust index.pub.pem --cup-key 16=cup-mldsa.pem
+    --trust index.pub.pem --cup-key 16=cup-mldsa.pem \
+    --metrics 127.0.0.1:9100 --count-activity
 ```
+
+With the `metrics` feature, the endpoint counts requests, update outcomes
+and ping-back events through the [`metrics`](https://crates.io/crates/metrics)
+facade, labelled only by values from your own configuration. With
+`activity`, it also counts daily active installs from the dates Chromium
+sends, without identifying them.
 
 ## License
 

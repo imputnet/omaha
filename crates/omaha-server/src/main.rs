@@ -55,6 +55,13 @@ enum Command {
         /// The `server` value in responses.
         #[arg(long)]
         server_name: Option<String>,
+        /// Serve Prometheus metrics on this address, e.g. 127.0.0.1:9100.
+        #[arg(long)]
+        metrics: Option<SocketAddr>,
+        /// Count daily roll calls and active reports from the dates clients
+        /// send, without identifying them.
+        #[arg(long)]
+        count_activity: bool,
     },
 }
 
@@ -123,9 +130,19 @@ async fn reload(store: &dyn ObjectStore, path: &StorePath, index: &StaticIndex, 
         .map_err(|e| e.to_string())
         .and_then(|b| index.replace(&b).map_err(|e| e.to_string()))
     {
-        Ok(Replaced::Loaded { serial }) => eprintln!("loaded index serial {serial}"),
+        Ok(Replaced::Loaded { serial }) => {
+            eprintln!("loaded index serial {serial}");
+            metrics::gauge!("omaha_index_serial").set(serial as f64);
+
+            if let Some(loaded) = index.current() {
+                metrics::gauge!("omaha_index_expires_timestamp_seconds").set(loaded.expires as f64);
+            }
+        }
         Ok(Replaced::Unchanged) => {}
-        Err(e) => eprintln!("{url}: {e}"),
+        Err(e) => {
+            eprintln!("{url}: {e}");
+            metrics::counter!("omaha_index_reload_failures_total").increment(1);
+        }
     }
 
     if index.is_stale() {
@@ -150,6 +167,22 @@ async fn shutdown() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
+fn install_metrics(addr: SocketAddr) -> Result<()> {
+    use metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
+
+    PrometheusBuilder::new()
+        .with_http_listener(addr)
+        .set_buckets_for_metric(
+            Matcher::Full("omaha_request_duration_seconds".into()),
+            &[
+                0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 1.0,
+            ],
+        )?
+        .install()?;
+    eprintln!("metrics on {addr}");
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn serve(
     index: String,
@@ -159,6 +192,8 @@ async fn serve(
     listen: SocketAddr,
     reload_secs: u64,
     server_name: Option<String>,
+    metrics_addr: Option<SocketAddr>,
+    count_activity: bool,
 ) -> Result<()> {
     let bases = if base.is_empty() {
         default_bases(&index)
@@ -176,8 +211,14 @@ async fn serve(
         builder = builder.trust(EcdsaKey::from_spki(&read_pem(path, "PUBLIC KEY")?)?);
     }
 
+    if let Some(addr) = metrics_addr {
+        install_metrics(addr)?;
+    }
+
     let source = builder.build();
-    let mut endpoint = Endpoint::builder().fallback(source.clone());
+    let mut endpoint = Endpoint::builder()
+        .fallback(source.clone())
+        .count_activity(count_activity);
 
     if let Some(cup) = cup_server(&cup_key)? {
         endpoint = endpoint.cup(cup);
@@ -238,7 +279,22 @@ async fn main() -> ExitCode {
             listen,
             reload,
             server_name,
-        } => serve(index, trust, base, cup_key, listen, reload, server_name).await,
+            metrics,
+            count_activity,
+        } => {
+            serve(
+                index,
+                trust,
+                base,
+                cup_key,
+                listen,
+                reload,
+                server_name,
+                metrics,
+                count_activity,
+            )
+            .await
+        }
     };
 
     match result {

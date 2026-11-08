@@ -31,12 +31,18 @@ hyper-util = { workspace = true, optional = true, features = ["service"] }
 object_store = { workspace = true, optional = true, features = ["fs", "aws", "http"] }
 url = { workspace = true, optional = true }
 pem-rfc7468 = { workspace = true, optional = true }
+metrics = { workspace = true, optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
 
 [features]
 default = ["aws-lc"]
 aws-lc = ["dep:aws-lc-rs"]
+metrics = ["dep:metrics"]
+activity = ["metrics", "omaha-protocol/activity"]
 cli = [
     "aws-lc",
+    "activity",
+    "dep:metrics-exporter-prometheus",
     "cup2/aws-lc",
     "dep:clap",
     "dep:tokio",
@@ -48,6 +54,8 @@ cli = [
 ]
 
 [dev-dependencies]
+metrics.workspace = true
+metrics-util = { workspace = true, features = ["debugging"] }
 tempfile.workspace = true
 pem-rfc7468.workspace = true
 cup2 = { workspace = true, features = ["aws-lc"] }
@@ -72,3 +80,7 @@ required-features = ["cli"]
 [[test]]
 name = "serve"
 required-features = ["cli"]
+
+[[test]]
+name = "metrics"
+required-features = ["activity"]

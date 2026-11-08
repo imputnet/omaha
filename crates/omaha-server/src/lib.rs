@@ -21,6 +21,7 @@ struct ReadmeDoctests;
 
 mod endpoint;
 pub mod index;
+pub mod metrics;
 mod router;
 mod source;
 mod static_index;
