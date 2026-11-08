@@ -44,10 +44,19 @@ struct Reader<'a> {
     buf: &'a [u8],
 }
 
+/// Longest tag or length encoding protobuf accepts, and the largest length
+/// (`INT_MAX` less protobuf's 16 slop bytes).
+const MAX_TAG_OR_LEN_BYTES: usize = 5;
+const MAX_LEN: u64 = i32::MAX as u64 - 16;
+
 impl<'a> Reader<'a> {
     fn varint(&mut self) -> Result<u64, DecodeError> {
+        self.varint_max(10)
+    }
+
+    fn varint_max(&mut self, max_bytes: usize) -> Result<u64, DecodeError> {
         let mut value = 0u64;
-        for i in 0..10 {
+        for i in 0..max_bytes {
             let (&byte, rest) = self.buf.split_first().ok_or(DecodeError)?;
             self.buf = rest;
             if i == 9 && byte > 1 {
@@ -76,7 +85,7 @@ impl<'a> Reader<'a> {
         if self.buf.is_empty() {
             return Ok(None);
         }
-        let key = self.varint()?;
+        let key = self.varint_max(MAX_TAG_OR_LEN_BYTES)?;
         let number = u32::try_from(key >> 3).map_err(|_| DecodeError)?;
         let wire = (key & 7) as u8;
         if number == 0 || number > 0x1fff_ffff {
@@ -92,7 +101,11 @@ impl<'a> Reader<'a> {
                 &[][..]
             }
             WIRE_LEN => {
-                let len = usize::try_from(self.varint()?).map_err(|_| DecodeError)?;
+                let len = self.varint_max(MAX_TAG_OR_LEN_BYTES)?;
+                if len > MAX_LEN {
+                    return Err(DecodeError);
+                }
+                let len = usize::try_from(len).map_err(|_| DecodeError)?;
                 self.take(len)?
             }
             WIRE_I32 => {
@@ -267,6 +280,9 @@ mod tests {
             &[
                 0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
             ][..], // varint overflow
+            &[0x82, 0xf1, 0x84, 0x80, 0x80, 0x00][..], // 6-byte tag
+            &[0x12, 0x92, 0x80, 0x80, 0x80, 0x00][..], // 6-byte length
+            &[0x12, 0x80, 0x80, 0x80, 0x80, 0x08][..], // length of 2 GiB
         ] {
             assert_eq!(decode_header(bad), Err(DecodeError), "{bad:x?}");
         }
