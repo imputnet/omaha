@@ -2,9 +2,10 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
-/// A dotted version number with the parsing and ordering rules of
-/// Chromium's `base::Version`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A dotted version number with the parsing, ordering and equality rules of
+/// Chromium's `base::Version`: missing trailing components count as zero, so
+/// `1.0 == 1`.
+#[derive(Clone, Debug)]
 pub struct Version(Vec<u32>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +78,21 @@ impl Ord for Version {
     }
 }
 
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Version {}
+
+impl std::hash::Hash for Version {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let significant = self.0.iter().rposition(|&n| n != 0).map_or(0, |i| i + 1);
+        self.0[..significant].hash(state);
+    }
+}
+
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -125,6 +141,18 @@ mod tests {
         assert!(v("1.10") > v("1.9"));
         assert!(v("2") > v("1.99.99.99"));
         assert_eq!(v("1.0").cmp(&v("1")), Ordering::Equal);
+    }
+
+    #[test]
+    fn equality_matches_ordering() {
+        use std::collections::HashSet;
+        assert_eq!(v("1.0"), v("1"));
+        assert_eq!(v("0.0.0.0"), v("0"));
+        assert_ne!(v("1.0.1"), v("1"));
+        let set: HashSet<_> = [v("1"), v("1.0"), v("1.0.0.0"), v("1.0.0.1")]
+            .into_iter()
+            .collect();
+        assert_eq!(set.len(), 2);
     }
 
     #[test]
