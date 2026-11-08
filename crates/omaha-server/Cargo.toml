@@ -35,3 +35,7 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "index"
+required-features = ["aws-lc"]
