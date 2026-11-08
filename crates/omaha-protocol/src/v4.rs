@@ -89,6 +89,35 @@ struct WireApp {
     data: Vec<WireData>,
     #[serde(default)]
     events: Vec<Value>,
+    #[cfg(feature = "activity")]
+    #[serde(default)]
+    ping: Option<WirePing>,
+}
+
+#[cfg(feature = "activity")]
+#[derive(Deserialize)]
+struct WirePing {
+    #[serde(default)]
+    rd: Option<Value>,
+    #[serde(default)]
+    ad: Option<Value>,
+}
+
+#[cfg(feature = "activity")]
+fn ping_day(value: Option<Value>) -> PingDay {
+    match value.as_ref().and_then(Value::as_i64) {
+        Some(-1) => PingDay::First,
+        Some(day) => u32::try_from(day).map_or(PingDay::Unknown, PingDay::Day),
+        None => PingDay::Unknown,
+    }
+}
+
+fn ping_value(day: PingDay) -> Value {
+    match day {
+        PingDay::Unknown => (-2).into(),
+        PingDay::First => (-1).into(),
+        PingDay::Day(day) => day.into(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -394,6 +423,13 @@ fn decode_app(a: WireApp, limits: &Limits) -> Result<App, DecodeError> {
             .iter()
             .map(|e| decode_event(e, limits))
             .collect::<Result<_, _>>()?,
+        #[cfg(feature = "activity")]
+        ping: a.ping.map(|p| Ping {
+            roll_call: ping_day(p.rd),
+            active: ping_day(p.ad),
+        }),
+        #[cfg(not(feature = "activity"))]
+        ping: None,
     })
 }
 
@@ -765,6 +801,13 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Result<Vec
                     .map(|r| json!({ "reason": r }))
                     .collect::<Vec<_>>();
                 am.insert("disabled".into(), reasons.into());
+            }
+
+            if let Some(ping) = &a.ping {
+                am.insert(
+                    "ping".into(),
+                    json!({ "rd": ping_value(ping.roll_call), "ad": ping_value(ping.active) }),
+                );
             }
 
             if !a.cached.is_empty() {

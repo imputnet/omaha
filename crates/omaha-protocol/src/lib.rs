@@ -8,8 +8,9 @@
 //!   or a redirect.
 //!
 //! [`Request`] has no fields for per-client identifiers: session and request
-//! IDs, install IDs, install dates, ping data and download URLs in ping-back
-//! events are never decoded.
+//! IDs, install IDs, install dates, `ping_freshness` and download URLs in
+//! ping-back events are never decoded. The `ping` dates are only decoded
+//! with the `activity` feature.
 //!
 //! Decoders take [`Limits`] and are meant for untrusted input. Encoders check
 //! responses with [`validate`] first, so a response a client would reject
@@ -26,6 +27,12 @@
 //!   Chromium's extension downloader doesn't apply them.
 //! - Sizes that don't fit a signed 32-bit integer are left out of update2
 //!   XML, as Chromium's parser would read them as unknown anyway.
+//!
+//! # Features
+//!
+//! - `activity`: decode the `ping` dates Omaha 4 clients send for user
+//!   counting into [`App::ping`]. Off by default, so requests carry no
+//!   dates unless a server opts in.
 
 // Compile and run the README example as a doctest.
 #[cfg(doctest)]

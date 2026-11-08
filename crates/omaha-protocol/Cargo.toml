@@ -16,6 +16,9 @@ serde_json.workspace = true
 form_urlencoded.workspace = true
 quick-xml.workspace = true
 
+[features]
+activity = []
+
 [dev-dependencies]
 chromium-testdata.workspace = true
 

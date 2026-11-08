@@ -13,7 +13,7 @@ pub enum Protocol {
 }
 
 /// An update check, without any per-client identifiers: session and request
-/// IDs, install IDs, install dates and ping data are never decoded.
+/// IDs, install IDs, install dates and `ping_freshness` are never decoded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
     /// The wire format it arrived in, which the answer must use.
@@ -147,6 +147,44 @@ pub struct App {
     pub data: Vec<DataRequest>,
     /// Reports from a ping-back.
     pub events: Vec<Event>,
+    /// The client's `ping` for user counting, if it sent one. Only decoded
+    /// with the `activity` feature; `ping_freshness` is never decoded.
+    pub ping: Option<Ping>,
+}
+
+/// The dates an app last counted towards the server's user counts, as the
+/// server gave them to the client. Enough to count each install once a day
+/// without identifying it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ping {
+    /// `rd`: the previous roll call, which every update check is.
+    pub roll_call: PingDay,
+    /// `ad`: the previous active report. This request is an active report
+    /// unless it is [`PingDay::Unknown`].
+    pub active: PingDay,
+}
+
+/// A date in a [`Ping`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PingDay {
+    /// `-2` or absent: not known, or for `ad`, not active since the last
+    /// active report.
+    #[default]
+    Unknown,
+    /// `-1`: there was none before.
+    First,
+    /// A server date, in days since 2007-01-01 (`daystart.elapsed_days`).
+    Day(u32),
+}
+
+impl PingDay {
+    /// Whether a request with this date is the app's first of `today`.
+    pub fn is_before(self, today: u32) -> bool {
+        match self {
+            PingDay::Day(day) => day < today,
+            PingDay::First | PingDay::Unknown => true,
+        }
+    }
 }
 
 impl App {
@@ -174,6 +212,7 @@ impl App {
             updatecheck: None,
             data: Vec::new(),
             events: Vec::new(),
+            ping: None,
         }
     }
 }

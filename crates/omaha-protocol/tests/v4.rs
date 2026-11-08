@@ -604,3 +604,68 @@ fn refuses_ambiguous_statuses_and_huge_sizes() {
         Err(EncodeError::InvalidDownload { .. })
     ));
 }
+
+fn request_with_ping(rd: &str, ad: &str) -> Vec<u8> {
+    format!(
+        r#"{{"request":{{"protocol":"4.0","apps":[{{"appid":"{}","updatecheck":{{}},"ping":{{"ping_freshness":"{{a9c43d70-0000-4000-8000-000000000000}}","rd":{rd},"ad":{ad}}}}}]}}}}"#,
+        "a".repeat(32)
+    )
+    .into_bytes()
+}
+
+#[cfg(feature = "activity")]
+#[test]
+fn decodes_ping_dates() {
+    let decode = |rd: &str, ad: &str| {
+        v4::decode_request(&request_with_ping(rd, ad), &Limits::default())
+            .unwrap()
+            .apps[0]
+            .ping
+    };
+    assert_eq!(
+        decode("7251", "-2"),
+        Some(Ping {
+            roll_call: PingDay::Day(7251),
+            active: PingDay::Unknown,
+        })
+    );
+    assert_eq!(
+        decode("-1", "-1"),
+        Some(Ping {
+            roll_call: PingDay::First,
+            active: PingDay::First,
+        })
+    );
+    assert_eq!(
+        decode("\"7251\"", "-7"),
+        Some(Ping::default()),
+        "malformed dates count as unknown"
+    );
+
+    let mut request =
+        v4::decode_request(&request_with_ping("7250", "7249"), &Limits::default()).unwrap();
+    let encoded = v4::encode_request(&request, None).unwrap();
+    assert_eq!(
+        v4::decode_request(&encoded, &Limits::default()).unwrap(),
+        request
+    );
+    request.apps[0].ping = None;
+    let encoded = v4::encode_request(&request, None).unwrap();
+    assert!(!String::from_utf8(encoded).unwrap().contains("ping"));
+}
+
+#[cfg(not(feature = "activity"))]
+#[test]
+fn ignores_ping_dates() {
+    let request =
+        v4::decode_request(&request_with_ping("7251", "7251"), &Limits::default()).unwrap();
+    assert_eq!(request.apps[0].ping, None);
+}
+
+#[test]
+fn compares_ping_days() {
+    assert!(PingDay::Day(7250).is_before(7251));
+    assert!(!PingDay::Day(7251).is_before(7251));
+    assert!(PingDay::First.is_before(7251));
+    assert!(PingDay::Unknown.is_before(7251));
+}
