@@ -7,12 +7,31 @@ on:
 permissions: {}
 
 jobs:
+  check:
+    name: check
+    if: github.repository_owner == 'imputnet'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: check for a merged release pr
+        id: check
+        run: .github/scripts/is-release-commit.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   release:
     name: release
-    if: >-
-      github.repository_owner == 'imputnet' &&
-      (startsWith(github.event.head_commit.message, 'release') ||
-       contains(github.event.head_commit.message, 'release-plz-'))
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
