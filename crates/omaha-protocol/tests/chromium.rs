@@ -25,7 +25,6 @@ fn matches_chromium_on_fixtures_valid_per_spec() {
         "kJSONInvalidCodebase",
         "kJSONMissingVersion",
         "kJSONInvalidVersion",
-        "kJSONInvalidMissingUpdateCheck",
         "kJSONInvalidUpdateCheck",
     ] {
         let d = decode(&src, name);
@@ -34,6 +33,10 @@ fn matches_chromium_on_fixtures_valid_per_spec() {
             "{name}: {d:?}"
         );
     }
+
+    let d = decode(&src, "kJSONInvalidMissingUpdateCheck");
+    assert!(d.errors.is_empty(), "{:?}", d.errors);
+    assert_eq!(d.response.apps[0].updatecheck, None);
 
     let d = decode(&src, "kJSONNoUpdate");
     assert!(d.errors.is_empty(), "{:?}", d.errors);

@@ -19,6 +19,9 @@
 //!
 //! - Hashes in responses must be valid SHA-256 hex. Chromium's parser keeps
 //!   any string, so [`v4::decode_response`] reports such apps as errors.
+//! - [`v4::decode_response`] accepts an `ok` app without `updatecheck`, which
+//!   the spec allows when the request didn't ask for one. Chromium rejects it
+//!   because it always asks; compare answers with the request.
 //! - update2 XML never carries differential updates (`codebasediff`);
 //!   Chromium's extension downloader doesn't apply them.
 //! - Sizes that don't fit a signed 32-bit integer are left out of update2

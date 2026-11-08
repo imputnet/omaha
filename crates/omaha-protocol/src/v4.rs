@@ -990,10 +990,11 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
         })
         .collect();
     let id = app.appid.clone();
-    let u = v
-        .get("updatecheck")
-        .filter(|u| u.is_object())
-        .ok_or_else(|| format!("{id}: missing updatecheck"))?;
+    let u = match v.get("updatecheck") {
+        None => return Ok(app),
+        Some(u) if u.is_object() => u,
+        Some(_) => return Err(format!("{id}: updatecheck is not an object")),
+    };
     let status =
         str_field(u, "status").ok_or_else(|| format!("{id}: missing updatecheck status"))?;
     let outcome = match status.as_str() {
