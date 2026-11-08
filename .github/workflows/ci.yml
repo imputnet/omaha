@@ -24,6 +24,18 @@ jobs:
       - name: test
         run: .github/scripts/test.sh
 
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: check dependencies
+        run: .github/scripts/deny.sh
+
   msrv:
     name: msrv
     runs-on: ubuntu-latest
