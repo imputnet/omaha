@@ -1,3 +1,5 @@
+//! Omaha 4 requests and responses: round trips, and real ones from
+//! Chromium and Google.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use omaha_protocol::v4::{self, RequestIds};
 use omaha_protocol::*;

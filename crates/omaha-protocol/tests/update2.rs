@@ -1,3 +1,4 @@
+//! Decoding update2 queries and encoding gupdate XML and redirects.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use omaha_protocol::update2::{self, ResponseMode};
 use omaha_protocol::*;

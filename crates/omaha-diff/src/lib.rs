@@ -17,7 +17,11 @@ use std::process::{Command, Output};
 /// Patch formats Chromium's update client can apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Format {
+    /// `puffin` patches (operation type `puff`), for CRX files: deflate
+    /// streams in the archive are decoded before diffing, so patches stay
+    /// small.
     Puffin,
+    /// `zucchini` patches (operation type `zucc`), for executables.
     Zucchini,
 }
 
@@ -31,14 +35,20 @@ impl Format {
     }
 }
 
+/// Why [`Differ::diff`] failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DiffError {
+    /// Writing the inputs to the temporary directory, starting the tool, or
+    /// reading its output failed. A missing binary ends up here.
     Io(std::io::Error),
     /// The tool exited unsuccessfully.
     Failed {
+        /// `"make"` when creating the patch, `"apply"` when checking it.
         step: &'static str,
+        /// The tool's exit status as displayed, e.g. `exit status: 1`.
         status: String,
+        /// The tool's standard error, lossily decoded and trimmed.
         stderr: String,
     },
     /// Applying the patch didn't give back the target.
@@ -98,6 +108,8 @@ impl Differ {
         }
     }
 
+    /// The patch format this differ makes, set by [`Differ::puffin`] or
+    /// [`Differ::zucchini`].
     pub fn format(&self) -> Format {
         self.format
     }

@@ -3,9 +3,14 @@ use std::fmt;
 /// Bounds applied while decoding untrusted requests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
+    /// Largest request body or update2 query string, in bytes. Default: 1 MiB.
     pub max_body_len: usize,
+    /// Most apps in one request. Default: 256.
     pub max_apps: usize,
+    /// Longest string member, in bytes. Default: 1024.
     pub max_string_len: usize,
+    /// Longest list member, such as `cached_items` or `acceptformat`. Default:
+    /// 64.
     pub max_list_len: usize,
 }
 
@@ -20,16 +25,23 @@ impl Default for Limits {
     }
 }
 
+/// Why a request or response couldn't be decoded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DecodeError {
+    /// The body exceeds [`Limits::max_body_len`].
     TooLarge,
+    /// More apps than [`Limits::max_apps`].
     TooManyApps,
     /// A string or list field exceeds its limit.
     FieldTooLong(&'static str),
+    /// Malformed JSON, with the parser's message.
     Syntax(String),
+    /// A `protocol` other than `4.0`; empty if the request has none.
     UnsupportedProtocol(String),
+    /// A required member, by name, is absent.
     Missing(&'static str),
+    /// A member, by name, has a value that doesn't parse or isn't allowed.
     Invalid(&'static str),
 }
 

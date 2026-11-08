@@ -11,6 +11,7 @@ pub struct Router<S> {
 /// One source's share of an update check.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Route<S> {
+    /// The source these apps go to.
     pub source: S,
     /// Positions of this source's apps in the request.
     pub apps: Vec<usize>,
@@ -26,6 +27,8 @@ pub struct Split<S> {
 }
 
 impl<S: Clone + Eq + Hash> Router<S> {
+    /// A router with no routes and no fallback, which puts every app in
+    /// [`Split::unknown`].
     pub fn new() -> Self {
         Router {
             routes: HashMap::new(),
@@ -33,6 +36,8 @@ impl<S: Clone + Eq + Hash> Router<S> {
         }
     }
 
+    /// Routes `appid` to `source`, replacing any earlier route for the same
+    /// app ID.
     pub fn route(mut self, appid: impl Into<String>, source: S) -> Self {
         self.routes.insert(appid.into(), source);
         self

@@ -1,3 +1,4 @@
+//! Packing, planning releases and publishing to an in-memory store.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use object_store::memory::InMemory;

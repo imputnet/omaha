@@ -30,11 +30,14 @@ impl ClientRequest {
         )
     }
 
+    /// The `cup2key` value, `<key id>:<nonce>`, for a server-side
+    /// [`crate::Ticket`].
     pub fn cup2key(&self) -> &str {
         &self.cup2key
     }
 }
 
+/// Why [`Client::verify`] rejected a response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VerifyError {
@@ -45,6 +48,8 @@ pub enum VerifyError {
     MalformedProof,
     /// The server saw a different request body.
     RequestHashMismatch,
+    /// The signature doesn't verify under the pinned key for this request,
+    /// response, key ID and nonce.
     BadSignature,
 }
 

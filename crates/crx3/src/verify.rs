@@ -32,6 +32,7 @@ pub struct Verified {
     pub public_key: Vec<u8>,
     /// Compressed `verified_contents`, if the header has them.
     pub verified_contents: Option<Vec<u8>>,
+    /// Whether the file is a differential update (`CrOD`).
     pub diff: bool,
     /// Where the archive starts in the file.
     pub archive_offset: u64,
@@ -43,11 +44,16 @@ pub struct Verified {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VerifyError {
+    /// The prefix or header is malformed: bad magic or version, truncated,
+    /// too large, contains a zip end-of-central-directory token, or the
+    /// protobuf or signed header data doesn't parse.
     HeaderInvalid,
     /// A proof's key couldn't be used for its algorithm.
     SignatureInitializationFailed,
     /// No proof by the ID key, or a required key's proof is missing.
     RequiredProofMissing,
+    /// A proof's signature doesn't match the signed data, or an RSA key is
+    /// outside 1024 to 8192 bits.
     SignatureVerificationFailed,
     /// Reading the file failed.
     Io(io::ErrorKind),

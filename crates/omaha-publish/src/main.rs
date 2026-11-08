@@ -1,3 +1,7 @@
+//! The `omaha-publish` command: packs directories into signed CRXs and
+//! publishes them, with patches and a signed index, to a feed in object
+//! storage.
+
 use clap::{Args, Parser, Subcommand};
 use object_store::ObjectStore;
 use object_store::local::LocalFileSystem;

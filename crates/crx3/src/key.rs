@@ -12,6 +12,7 @@ impl KeyHash {
         KeyHash(bytes)
     }
 
+    /// The raw 32-byte SHA-256 digest.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -40,6 +41,7 @@ impl SignedDataDigest {
         SignedDataDigest(bytes)
     }
 
+    /// The raw 32-byte SHA-256 digest a [`Signer`] signs.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -60,6 +62,8 @@ pub enum Algorithm {
 ///
 /// Signers only ever see the SHA-256 of the signed data, never the archive.
 pub trait Signer {
+    /// The proof type this signer produces, which picks the header field its
+    /// proof goes in.
     fn algorithm(&self) -> Algorithm;
     /// The DER-encoded SubjectPublicKeyInfo of the signing key.
     fn public_key(&self) -> &[u8];
@@ -73,6 +77,8 @@ pub trait Signer {
 pub struct SignError(Box<dyn std::error::Error + Send + Sync>);
 
 impl SignError {
+    /// Wraps the underlying error from a key, HSM or signing service, kept as
+    /// the error's source.
     pub fn new(source: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
         SignError(source.into())
     }

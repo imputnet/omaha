@@ -8,6 +8,7 @@ use aws_lc_rs::signature::{
 };
 use std::fmt;
 
+/// aws-lc failed to generate, load, export or parse a key.
 #[derive(Debug)]
 pub struct KeyError(String);
 
@@ -30,10 +31,12 @@ pub struct EcdsaSigner {
 }
 
 impl EcdsaSigner {
+    /// Generates a new P-256 key.
     pub fn generate() -> Result<Self, KeyError> {
         Self::from_key(EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).map_err(key_err)?)
     }
 
+    /// Loads a PKCS#8 DER private key, which must be on P-256.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, KeyError> {
         Self::from_key(
             EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, der).map_err(key_err)?,

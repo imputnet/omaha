@@ -34,11 +34,14 @@ mod tests {
 pub struct AppId(String);
 
 impl AppId {
+    /// Returns `None` if `id` is empty or has characters outside printable
+    /// ASCII (`!` to `~`).
     pub fn new(id: impl Into<String>) -> Option<Self> {
         let id = id.into();
         (!id.is_empty() && id.bytes().all(|b| b.is_ascii_graphic())).then_some(AppId(id))
     }
 
+    /// The ID as sent on the wire.
     pub fn as_str(&self) -> &str {
         &self.0
     }

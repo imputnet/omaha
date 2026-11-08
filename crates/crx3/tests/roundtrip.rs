@@ -1,3 +1,5 @@
+//! CRX files built and signed with this crate's own signers, checked with
+//! its verifier: IDs, appended proofs, policies and tampering.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 

@@ -8,38 +8,52 @@ use std::fmt;
 pub enum EncodeError {
     /// An update with no pipelines.
     NoPipelines {
+        /// The app whose answer breaks the rule.
         appid: String,
     },
+    /// A pipeline with no operations.
     EmptyPipeline {
+        /// The app whose answer breaks the rule.
         appid: String,
+        /// The `pipeline_id` of the offending pipeline.
         pipeline: String,
     },
     /// A download without URLs, with a non-HTTP(S) URL, or of size 0.
     InvalidDownload {
+        /// The app whose answer breaks the rule.
         appid: String,
+        /// The `pipeline_id` of the offending pipeline.
         pipeline: String,
     },
     /// A `crx3` operation whose input isn't the previous operation's output.
     HashMismatch {
+        /// The app whose answer breaks the rule.
         appid: String,
+        /// The `pipeline_id` of the offending pipeline.
         pipeline: String,
     },
     /// A `run` operation without a path.
     InvalidRun {
+        /// The app whose answer breaks the rule.
         appid: String,
+        /// The `pipeline_id` of the offending pipeline.
         pipeline: String,
     },
     /// An operation type this crate can't encode.
     UnknownOperation {
+        /// The app whose answer breaks the rule.
         appid: String,
+        /// The `pipeline_id` of the offending pipeline.
         pipeline: String,
     },
     /// A ping-back acknowledgement that also carries update check results.
     MixedPingback {
+        /// The app whose answer breaks the rule.
         appid: String,
     },
     /// An update check error whose status reads as `ok` or `noupdate`.
     InvalidStatus {
+        /// The app whose answer breaks the rule.
         appid: String,
     },
     /// The JSON or XML writer failed.

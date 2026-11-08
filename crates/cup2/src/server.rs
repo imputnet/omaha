@@ -17,6 +17,8 @@ pub trait Signer {
 pub struct SignError(Box<dyn std::error::Error + Send + Sync>);
 
 impl SignError {
+    /// Wraps the underlying error from a key, HSM or signing service, kept as
+    /// the error's source.
     pub fn new(source: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
         SignError(source.into())
     }
@@ -65,6 +67,8 @@ pub struct Server {
 }
 
 impl Server {
+    /// A server with no keys, which rejects every request as
+    /// [`Error::UnknownKey`] until keys are added with [`Server::with`].
     pub fn new() -> Self {
         Self::default()
     }

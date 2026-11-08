@@ -1,3 +1,5 @@
+//! Signing and opening indexes, and the answers an index gives to update
+//! checks.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use base64::Engine;

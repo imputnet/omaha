@@ -1,3 +1,5 @@
+//! A [`omaha_server::StaticIndex`] serving an endpoint while its index is
+//! replaced or expires.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use bytes::Bytes;

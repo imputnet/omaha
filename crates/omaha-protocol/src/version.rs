@@ -8,6 +8,8 @@ use std::str::FromStr;
 #[derive(Clone, Debug)]
 pub struct Version(Vec<u32>);
 
+/// Returned for a string that isn't dot-separated decimal `u32`s, or whose
+/// first component has a leading zero.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseVersionError;
 
@@ -20,6 +22,7 @@ impl fmt::Display for ParseVersionError {
 impl std::error::Error for ParseVersionError {}
 
 impl Version {
+    /// The numbers between the dots, as parsed: `1.0` gives `[1, 0]`.
     pub fn components(&self) -> &[u32] {
         &self.0
     }

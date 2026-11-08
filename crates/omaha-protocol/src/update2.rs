@@ -19,9 +19,13 @@ pub enum ResponseMode {
     Redirect,
 }
 
+/// A decoded update2 query.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Update2Request {
+    /// The client and apps, with [`Protocol::Update2`].
     pub request: Request,
+    /// `redirect` if the query has `response=redirect`, which allows only one
+    /// `x`.
     pub mode: ResponseMode,
 }
 

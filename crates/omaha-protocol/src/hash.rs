@@ -6,15 +6,18 @@ use std::str::FromStr;
 pub struct Sha256([u8; 32]);
 
 impl Sha256 {
+    /// Wraps a raw digest.
     pub const fn from_bytes(bytes: [u8; 32]) -> Self {
         Sha256(bytes)
     }
 
+    /// The raw 32-byte digest.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 }
 
+/// Returned for a string that isn't 64 hex digits.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseHashError;
 

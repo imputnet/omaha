@@ -1,3 +1,5 @@
+//! Patches made and applied with the real `puffin` and `zucchini`, taken
+//! from `OMAHA_PUFFIN` and `OMAHA_ZUCCHINI`, and failures with fake tools.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use crx3::aws_lc::EcdsaSigner;

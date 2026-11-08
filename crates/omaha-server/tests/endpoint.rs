@@ -1,3 +1,5 @@
+//! An [`omaha_server::Endpoint`] driven over HTTP requests: routing, CUP
+//! signing, update2, ping-backs and misbehaving sources.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use bytes::Bytes;

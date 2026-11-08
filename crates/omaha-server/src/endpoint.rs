@@ -47,6 +47,8 @@ pub struct EndpointBuilder {
 }
 
 impl Endpoint {
+    /// Starts an endpoint with no sources, no CUP keys, no ping sink, default
+    /// [`Limits`] and the system clock.
     pub fn builder() -> EndpointBuilder {
         EndpointBuilder {
             inner: Inner {
@@ -102,6 +104,8 @@ impl EndpointBuilder {
         self
     }
 
+    /// Bounds on body size, app count and field lengths when decoding
+    /// requests. Defaults to [`Limits::default`].
     pub fn limits(mut self, limits: Limits) -> Self {
         self.inner.limits = limits;
         self
@@ -113,6 +117,8 @@ impl EndpointBuilder {
         self
     }
 
+    /// Passes each ping-back to `sink` before acknowledging it. Without a
+    /// sink, ping-backs are acknowledged and dropped.
     pub fn pings(mut self, sink: impl PingSink + 'static) -> Self {
         self.inner.pings = Some(Box::new(sink));
         self
@@ -131,6 +137,8 @@ impl EndpointBuilder {
         self
     }
 
+    /// Finishes configuration. Clones of the endpoint share it, and it can't
+    /// be changed afterwards.
     pub fn build(self) -> Endpoint {
         Endpoint {
             inner: Arc::new(self.inner),

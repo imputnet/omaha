@@ -56,8 +56,12 @@ pub const PAYLOAD_TYPE: &str = "application/vnd.omaha.index+json";
 
 const MAX_PATH_LEN: usize = 1024;
 
+/// A list of releases per app: the document inside the signed envelope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Index {
+    /// Publish counter. Each new index needs a higher one, since
+    /// [`StaticIndex`](crate::StaticIndex) refuses to go back to a lower
+    /// serial.
     pub serial: u64,
     /// Unix seconds after which the index is no longer loaded.
     pub expires: u64,
@@ -65,10 +69,15 @@ pub struct Index {
     pub apps: BTreeMap<AppId, Vec<Release>>,
 }
 
+/// One version of an app, with the files that install it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Release {
+    /// The version offered as `nextversion`, compared with the installed one.
     pub version: Version,
+    /// The full CRX3 package.
     pub crx: File,
+    /// What a client needs for this release to be offered. Empty by default,
+    /// which offers it to every client.
     pub requires: Requirements,
     /// Patches to this release, in order of preference.
     pub patches: Vec<Patch>,
@@ -77,6 +86,7 @@ pub struct Release {
 }
 
 impl Release {
+    /// A release with no requirements, patches or attributes.
     pub fn new(version: Version, crx: File) -> Self {
         Release {
             version,
@@ -88,11 +98,15 @@ impl Release {
     }
 }
 
+/// A file the client downloads, by path and expected content.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
     /// Relative to the server's download bases.
     pub path: String,
+    /// SHA-256 of the file's contents, which the client checks after
+    /// downloading.
     pub sha256: Sha256,
+    /// Size in bytes. Must not be zero.
     pub size: u64,
 }
 
@@ -100,6 +114,8 @@ pub struct File {
 /// value.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Requirements {
+    /// Lowest browser version (`prodversion`) offered the release. A client
+    /// that doesn't send its version doesn't qualify.
     pub prodversionmin: Option<Version>,
     /// Values of the request's `@os`, e.g. `win`, `mac`, `linux`.
     pub os: Vec<String>,
@@ -111,15 +127,20 @@ pub struct Requirements {
 /// A differential update to a release from an earlier CRX.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Patch {
+    /// Offered only to clients that list this format in `acceptformat`.
     pub format: PatchFormat,
     /// The SHA-256 of the CRX the patch applies to.
     pub from: Sha256,
+    /// The patch file itself.
     pub file: File,
 }
 
+/// Differential patch formats Chromium's update client can apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PatchFormat {
+    /// Made by Chromium's `puffin`, operation type `puff`.
     Puff,
+    /// Made by Chromium's `zucchini`, operation type `zucc`.
     Zucc,
 }
 
@@ -133,11 +154,18 @@ impl PatchFormat {
     }
 }
 
+/// Why an index document doesn't parse or doesn't pass [`Index::check`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum IndexError {
+    /// The document isn't JSON of the index's shape, for example with a
+    /// missing, mistyped or unknown field. Holds the parser's message.
     Json(String),
+    /// `format` isn't [`FORMAT`]; holds the value found.
     UnsupportedFormat(u64),
+    /// A value doesn't parse (app ID, version, hash, attribute name, patch
+    /// format) or [`Index::check`] failed. Holds what was wrong, prefixed
+    /// with the app ID where there is one.
     Invalid(String),
 }
 
@@ -154,6 +182,7 @@ impl fmt::Display for IndexError {
 impl std::error::Error for IndexError {}
 
 impl Index {
+    /// An index with no apps. `expires` is in Unix seconds.
     pub fn new(serial: u64, expires: u64) -> Self {
         Index {
             serial,

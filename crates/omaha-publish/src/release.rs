@@ -1,3 +1,6 @@
+//! Working out the next index for a new CRX: its serial and expiry, which
+//! releases to keep, and patches from earlier CRXs.
+
 use omaha_diff::{DiffError, Differ, Format};
 use omaha_protocol::{AppId, AttributeName, Sha256, Version};
 use omaha_server::index::{File, Index, IndexError, Patch, PatchFormat, Release, Requirements};
@@ -33,17 +36,25 @@ impl Default for Policy {
     }
 }
 
+/// Why a CRX can't be added to an index, or an index refreshed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ReleaseError {
+    /// The CRX doesn't verify or its ID isn't a valid app ID; holds the
+    /// reason.
     Crx(String),
+    /// The archive has no readable `manifest.json` within 1 MiB, or its
+    /// `version` is missing or invalid; holds the reason.
     Manifest(String),
     /// The app already has a release with this version.
     VersionExists(Version),
     /// A fetched CRX doesn't match its hash in the index.
     SourceMismatch(String),
+    /// A patch tool failed, or its patch didn't reproduce the CRX.
     Diff(DiffError),
+    /// The new index fails [`Index::check`].
     Index(IndexError),
+    /// The previous index's serial is `u64::MAX`, so there is no next one.
     SerialOverflow,
 }
 
@@ -66,9 +77,13 @@ impl std::error::Error for ReleaseError {}
 /// A CRX ready to be added to an index.
 #[derive(Clone, Debug)]
 pub struct Candidate {
+    /// The extension ID, from the CRX's developer key.
     pub appid: AppId,
+    /// The `version` in the archive's `manifest.json`.
     pub version: Version,
+    /// SHA-256 of the whole CRX file.
     pub sha256: Sha256,
+    /// The CRX file as given.
     pub crx: Vec<u8>,
 }
 
@@ -119,21 +134,29 @@ fn sha256(bytes: &[u8]) -> Sha256 {
 /// A file to upload before the index that refers to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Upload {
+    /// Path in the store: `<appid>/<sha256>.crx3` for a CRX,
+    /// `<appid>/<sha256>/<from sha256>.<puff|zucc>` for a patch.
     pub path: String,
+    /// The file's contents.
     pub bytes: Vec<u8>,
 }
 
 /// The next index, and the new files it refers to.
 #[derive(Clone, Debug)]
 pub struct Plan {
+    /// The next index, with its serial and expiry set. Not yet signed.
     pub index: Index,
+    /// The new CRX, then its patches, smallest first.
     pub uploads: Vec<Upload>,
 }
 
 /// What to publish alongside a CRX.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
+    /// What a client needs to be offered the release. Empty by default, which
+    /// offers it to every client.
     pub requires: Requirements,
+    /// Application-specific members sent with the update check result.
     pub attributes: BTreeMap<AttributeName, String>,
 }
 

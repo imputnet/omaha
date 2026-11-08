@@ -7,12 +7,18 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+/// Why reading or writing a feed failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum StoreError {
+    /// The object store failed, a path isn't a valid object path, or
+    /// [`Store::refresh`] found no index.
     Store(object_store::Error),
+    /// The stored index isn't signed by a trusted key or isn't a valid index.
     Index(OpenError),
+    /// Signing the new index failed.
     Sign(SignError),
+    /// The CRX couldn't be added or the index couldn't be refreshed.
     Release(ReleaseError),
     /// A file already exists at a path with different contents.
     Conflict(String),
@@ -49,6 +55,7 @@ impl From<ReleaseError> for StoreError {
 
 /// The index currently in a store, and the version to replace.
 pub struct Current {
+    /// The stored index. Its signature is checked, its expiry isn't.
     pub index: Index,
     version: UpdateVersion,
 }
@@ -61,6 +68,8 @@ pub struct Store {
 }
 
 impl Store {
+    /// A feed in `store` with its index at `index_path`. Fails if
+    /// `index_path` isn't a valid object path.
     pub fn new(store: Arc<dyn ObjectStore>, index_path: &str) -> Result<Self, StoreError> {
         Ok(Store {
             store,
@@ -85,6 +94,8 @@ impl Store {
         Ok(Some(Current { index, version }))
     }
 
+    /// The contents of a file the index refers to, not checked against its
+    /// hash.
     pub async fn fetch(&self, file: &File) -> Result<Vec<u8>, StoreError> {
         let path = Path::parse(&file.path).map_err(object_store::Error::from)?;
         Ok(self.store.get(&path).await?.bytes().await?.to_vec())

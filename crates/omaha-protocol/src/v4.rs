@@ -634,7 +634,10 @@ fn encode_event(e: &Event) -> Value {
 /// read them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestIds {
+    /// `sessionid`: the same for every request of one update session.
     pub session_id: String,
+    /// `requestid`: unique to this request, so the server can drop retried
+    /// duplicates.
     pub request_id: String,
 }
 
@@ -824,7 +827,9 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Result<Vec
 /// reported in `errors` instead of failing the whole response.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodedResponse {
+    /// The apps that parsed.
     pub response: Response,
+    /// One message per app that didn't parse.
     pub errors: Vec<String>,
 }
 

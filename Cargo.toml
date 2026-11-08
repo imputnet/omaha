@@ -42,6 +42,7 @@ chromium-testdata = { path = "support/chromium-testdata" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+missing_docs = "deny"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

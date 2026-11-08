@@ -81,6 +81,7 @@ impl fmt::Display for KeyId {
     }
 }
 
+/// Why a request's `cup2key` or `cup2hreq` was rejected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
@@ -138,10 +139,13 @@ impl Ticket {
         })
     }
 
+    /// The key ID from `cup2key`, which picks the key that signs the
+    /// response.
     pub fn key_id(&self) -> KeyId {
         self.key_id
     }
 
+    /// The client's nonce from `cup2key`, as sent: non-empty and without `:`.
     pub fn nonce(&self) -> &str {
         &self.nonce
     }
@@ -173,6 +177,8 @@ impl Ticket {
 pub struct ProofData([u8; 32]);
 
 impl ProofData {
+    /// The 32-byte digest. ML-DSA-44 signers sign these bytes, ECDSA signers
+    /// their SHA-256.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }

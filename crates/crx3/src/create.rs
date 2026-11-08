@@ -15,11 +15,13 @@ pub struct Builder<'a> {
     diff: bool,
 }
 
+/// Why [`Builder::build`] or [`Builder::write`] failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum BuildError {
     /// No signer was given, so there is no ID key.
     NoSigner,
+    /// A signer failed to sign the digest.
     Sign(SignError),
     /// The encoded header happens to contain a zip end-of-central-directory
     /// token, which Chromium rejects. With ECDSA, building again produces a
@@ -27,6 +29,7 @@ pub enum BuildError {
     HeaderContainsZipToken,
     /// Header or signed data is larger than 4 GiB.
     TooLarge,
+    /// Reading the archive or writing the output failed.
     Io(io::Error),
 }
 
@@ -59,6 +62,8 @@ impl From<io::Error> for BuildError {
 }
 
 impl<'a> Builder<'a> {
+    /// An empty builder: no signers, no `verified_contents`, full CRX
+    /// (`Cr24`) output.
     pub fn new() -> Self {
         Self::default()
     }
@@ -153,11 +158,13 @@ fn finish(
     Ok(())
 }
 
+/// Why [`append_proof`] or [`append_proof_to`] failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AppendError {
     /// The input isn't a well-formed CRX3 file.
     Invalid,
+    /// Signing, I/O or encoding the new header failed.
     Build(BuildError),
 }
 

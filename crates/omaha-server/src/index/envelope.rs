@@ -30,6 +30,8 @@ impl SigningInput {
         SigningInput(pae)
     }
 
+    /// The encoded bytes: `DSSEv1 <type length> <payload type> <payload
+    /// length> <payload>`.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -40,10 +42,12 @@ impl SigningInput {
 pub struct KeyId(String);
 
 impl KeyId {
+    /// The ID of a key given as DER SubjectPublicKeyInfo.
     pub fn of(spki: &[u8]) -> Self {
         KeyId(omaha_protocol::Sha256::from_bytes(sha2::Sha256::digest(spki).into()).to_string())
     }
 
+    /// The lowercase hex form, as in an envelope signature's `keyid`.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -55,26 +59,42 @@ impl fmt::Display for KeyId {
     }
 }
 
+/// Signs index envelopes: a key in memory, an HSM, or a remote signing
+/// service.
 pub trait Signer {
     /// The SubjectPublicKeyInfo DER of the signing key.
     fn public_key(&self) -> &[u8];
+    /// Signs `input` and returns the raw signature, which goes in the
+    /// envelope base64-encoded. It must verify with the matching
+    /// [`Verifier`].
     fn sign(&self, input: &SigningInput) -> Result<Vec<u8>, SignError>;
 }
 
+/// A trusted public key that index signatures are checked against.
 pub trait Verifier {
+    /// The ID signatures name in `keyid`. Signatures naming other keys are
+    /// skipped.
     fn key_id(&self) -> &KeyId;
+    /// Whether `signature`, already base64-decoded, is valid for `input`
+    /// under this key.
     fn verify(&self, input: &SigningInput, signature: &[u8]) -> bool;
 }
 
+/// Why [`Index::sign`] failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SignError {
+    /// The index failed [`Index::check`] or couldn't be serialized.
     Index(IndexError),
+    /// No signers were given.
     NoSigners,
+    /// A signer failed; holds its error message.
     Signer(String),
 }
 
 impl SignError {
+    /// A [`SignError::Signer`] from a signer's own error, for [`Signer`]
+    /// implementations.
     pub fn signer(e: impl fmt::Display) -> Self {
         SignError::Signer(e.to_string())
     }
@@ -92,15 +112,23 @@ impl fmt::Display for SignError {
 
 impl std::error::Error for SignError {}
 
+/// Why [`Index::open`] or [`Index::verify`] rejected an envelope.
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenError {
+    /// The envelope isn't DSSE JSON, has more than 16 signatures, or holds
+    /// invalid base64. Holds the reason.
     Envelope(String),
+    /// `payloadType` isn't [`PAYLOAD_TYPE`](super::PAYLOAD_TYPE); holds the
+    /// type found.
     PayloadType(String),
     /// No signature verifies with a trusted key.
     Untrusted,
+    /// The signature is trusted but the payload isn't a valid index.
     Index(IndexError),
+    /// The index had expired at the time given to [`Index::open`].
     Expired {
+        /// The index's `expires`, in Unix seconds.
         expires: u64,
     },
 }

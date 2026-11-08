@@ -1,3 +1,6 @@
+//! Deterministic zip archives, depending only on file paths and contents,
+//! ready to be signed as a CRX.
+
 use std::collections::HashSet;
 use std::fmt;
 use std::io::{Cursor, Write};
@@ -17,11 +20,15 @@ pub enum Compression {
     Deflated,
 }
 
+/// Why [`archive`] or [`read_dir`] failed.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ArchiveError {
+    /// A path can't go in an archive.
     Path(PathError),
+    /// Reading the directory or one of its files failed.
     Io(std::io::Error),
+    /// The zip writer failed; holds its message.
     Zip(String),
 }
 
@@ -53,11 +60,13 @@ fn zip_err(e: impl fmt::Display) -> ArchiveError {
     ArchiveError::Zip(e.to_string())
 }
 
+/// Why a path can't go in an archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PathError {
     /// Empty, absolute, or containing `.`/`..` segments, empty segments,
     /// backslashes or NUL.
     Unsafe(String),
+    /// The same path appears more than once.
     Duplicate(String),
     /// A directory entry that is neither a file nor a directory, such as a
     /// symlink.

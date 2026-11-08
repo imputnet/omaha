@@ -1,3 +1,5 @@
+//! Proofs from [`cup2::Server`] checked by [`cup2::Client`] for both key
+//! types, including changed responses, request bodies and nonces.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 

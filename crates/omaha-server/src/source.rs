@@ -12,6 +12,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub struct Check<'a> {
     /// The wire format the request arrived in.
     pub protocol: Protocol,
+    /// Request-wide details of the client, such as browser version, OS,
+    /// architecture and accepted operation types.
     pub client: &'a Client,
     /// The apps routed to the source, in request order.
     pub apps: &'a [&'a App],
@@ -21,6 +23,8 @@ pub struct Check<'a> {
 }
 
 impl<'a> Check<'a> {
+    /// Builds a check for calling a [`Source`] directly, outside an
+    /// [`Endpoint`](crate::Endpoint).
     pub fn new(
         protocol: Protocol,
         client: &'a Client,
@@ -46,5 +50,7 @@ pub trait Source: Send + Sync {
 
 /// Receives ping-backs, for example to count installs and failures.
 pub trait PingSink: Send + Sync {
+    /// Called for each ping-back app before the response is sent, so it
+    /// shouldn't block. `client` holds the request-wide details.
     fn record(&self, client: &Client, app: &App);
 }

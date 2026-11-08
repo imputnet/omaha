@@ -31,24 +31,32 @@ struct Inner {
 /// What [`StaticIndex::replace`] did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Replaced {
+    /// The index is now served.
     Loaded {
+        /// Serial of the newly loaded index.
         serial: u64,
     },
     /// The index was the one already loaded.
     Unchanged,
 }
 
+/// Why [`StaticIndex::replace`] kept the loaded index.
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ReplaceError {
+    /// The envelope didn't open: malformed, not signed by a trusted key, or
+    /// expired.
     Open(OpenError),
     /// The index is older than the one loaded.
     Rollback {
+        /// Serial of the index being served.
         loaded: u64,
+        /// Serial of the rejected index.
         offered: u64,
     },
     /// The index has the loaded serial but different contents.
     Conflict {
+        /// The serial both indexes share.
         serial: u64,
     },
 }
@@ -120,6 +128,8 @@ impl StaticIndexBuilder {
         self
     }
 
+    /// Finishes the source. It answers every app with `error-internal` until
+    /// [`StaticIndex::replace`] loads an index.
     pub fn build(self) -> StaticIndex {
         StaticIndex {
             inner: Arc::new(self.inner),

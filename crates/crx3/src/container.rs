@@ -27,12 +27,17 @@ pub struct Crx<'a> {
     pub archive: &'a [u8],
 }
 
+/// Why [`split`] rejected its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SplitError {
+    /// The file starts with neither `Cr24` nor `CrOD`.
     BadMagic,
+    /// The format version isn't 3; holds the version found.
     UnsupportedVersion(u32),
+    /// The file ends before the prefix or the header it declares is complete.
     Truncated,
+    /// The declared header size exceeds [`MAX_HEADER_LEN`].
     HeaderTooLarge,
 }
 
