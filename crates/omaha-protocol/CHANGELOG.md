@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/imputnet/omaha/compare/omaha-protocol-v0.1.0...omaha-protocol-v0.1.1) - 2026-11-08
+
+### Changed
+
+- decode ok apps without an update check
+
 ## [0.1.0](https://github.com/imputnet/omaha/compare/omaha-protocol-v0.0.1...omaha-protocol-v0.1.0) - 2026-11-08
 
 ### Changed
