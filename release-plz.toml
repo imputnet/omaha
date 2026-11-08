@@ -23,10 +23,6 @@ name = "omaha-diff"
 release = false
 
 [[package]]
-name = "omaha-protocol"
-release = false
-
-[[package]]
 name = "omaha-publish"
 release = false
 
