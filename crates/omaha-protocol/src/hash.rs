@@ -47,7 +47,15 @@ impl FromStr for Sha256 {
 
 impl fmt::Display for Sha256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.iter().try_for_each(|b| write!(f, "{b:02x}"))
+        const DIGITS: &[u8; 16] = b"0123456789abcdef";
+        let mut hex = [0u8; 64];
+        for (pair, byte) in hex.as_chunks_mut::<2>().0.iter_mut().zip(self.0) {
+            *pair = [
+                DIGITS[usize::from(byte >> 4)],
+                DIGITS[usize::from(byte & 0xf)],
+            ];
+        }
+        f.write_str(std::str::from_utf8(&hex).map_err(|_| fmt::Error)?)
     }
 }
 
