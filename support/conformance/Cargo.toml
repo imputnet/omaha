@@ -10,7 +10,6 @@ publish = false
 omaha-protocol.workspace = true
 omaha-server.workspace = true
 omaha-publish.workspace = true
-omaha-diff.workspace = true
 crx3.workspace = true
 object_store = { workspace = true, features = ["fs"] }
 http.workspace = true

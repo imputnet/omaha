@@ -296,7 +296,6 @@ dependencies = [
  "hyper",
  "hyper-util",
  "object_store",
- "omaha-diff",
  "omaha-protocol",
  "omaha-publish",
  "omaha-server",

@@ -12,7 +12,6 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use object_store::local::LocalFileSystem;
-use omaha_diff::Differ;
 use omaha_publish::Store;
 use omaha_publish::archive::{self, Compression};
 use omaha_publish::release::{Options, Policy};
@@ -36,9 +35,6 @@ struct Args {
     /// e.g. /etc/opt/chrome_for_testing/policies/managed.
     #[arg(long)]
     policy_dir: PathBuf,
-    /// Publish v2 with puffin patches from this binary.
-    #[arg(long)]
-    puffin: Option<PathBuf>,
     #[arg(long, value_enum, default_values_t = [Protocol::Update2, Protocol::Omaha4])]
     protocol: Vec<Protocol>,
     /// Seconds to wait for each install.
@@ -54,8 +50,10 @@ enum Protocol {
     /// An extension with its own update URL, which Chromium checks with
     /// update2 GET requests.
     Update2,
-    /// An extension from the (overridden) Web Store update URL, which
-    /// Chromium checks with Omaha 4 through update_client.
+    /// An extension installed from its own update URL, whose manifest
+    /// names the (overridden) Web Store update URL, so Chromium checks it
+    /// with Omaha 4 through update_client. Installing it from the Web Store
+    /// URL would need Google's publisher proof.
     Omaha4,
 }
 
@@ -262,8 +260,9 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
         "index.json",
     )
     .unwrap();
+    let install_url = format!("{base}/update2");
     let (update_url, extra) = match protocol {
-        Protocol::Update2 => (format!("{base}/update2"), vec![]),
+        Protocol::Update2 => (install_url.clone(), vec![]),
         Protocol::Omaha4 => {
             let url = format!("{base}/service/update2/crx");
             (
@@ -272,12 +271,10 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
             )
         }
     };
-    let differs: Vec<Differ> = args.puffin.iter().map(Differ::puffin).collect();
     let crx_key = crx3::aws_lc::EcdsaSigner::generate().unwrap();
     let publish = |version: &'static str| {
         let update_url = &update_url;
         let store = &store;
-        let differs = &differs;
         let index_key = &index_key;
         let trusted = &trusted;
         let crx_key = &crx_key;
@@ -290,7 +287,7 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
                     Options::default(),
                     &[index_key],
                     &[trusted],
-                    differs,
+                    &[],
                     &Policy::default(),
                     SystemTime::now(),
                 )
@@ -310,7 +307,7 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
     let policy = args.policy_dir.join("omaha-conformance.json");
     std::fs::write(
         &policy,
-        format!(r#"{{"ExtensionInstallForcelist":["{id};{update_url}"]}}"#),
+        format!(r#"{{"ExtensionInstallForcelist":["{id};{install_url}"]}}"#),
     )
     .map_err(|e| format!("{}: {e}", policy.display()))?;
 
@@ -339,7 +336,7 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
 
     server.record("--- restart ---".into());
     let browser = Browser::launch(args, &profile, &extra, &dir.path().join("browser-2.log"));
-    let got_v2 = wait_for(&installed("2.0"), timeout).await;
+    let updated = wait_for(&installed("2.0"), timeout).await;
     browser.stop().await;
 
     let after: Vec<String> = server
@@ -350,45 +347,26 @@ async fn scenario(args: &Args, protocol: Protocol) -> Result<(), String> {
         .skip_while(|l| !l.starts_with("--- restart"))
         .cloned()
         .collect();
-    let v2 = format!("GET /files/{} ", plan.uploads[0].path);
-    let checked_as_update = after.iter().any(|l| match protocol {
+    let checked = after.iter().any(|l| match protocol {
         Protocol::Update2 => l.starts_with("GET /update2") && l.contains("v=1.0"),
         Protocol::Omaha4 => {
             l.starts_with("POST /service/update2/json") && l.contains(r#""version":"1.0""#)
         }
     });
+    let crx = format!("GET /files/{} ", plan.uploads[0].path);
     let downloaded = after
         .iter()
-        .any(|l| l.starts_with(&v2) && l.ends_with("200"));
-    let patched = after
-        .iter()
-        .any(|l| l.contains(".puff ") && l.ends_with("200"));
-    let proof_missing = after
-        .iter()
-        .any(|l| l.contains(r#""eventtype":3"#) && l.contains(r#""extracode1":8"#));
+        .any(|l| l.starts_with(&crx) && l.ends_with("200"));
 
-    let result = if !checked_as_update {
+    let result = if !checked {
         Err("no update check from the installed 1.0".into())
-    } else if !downloaded && !patched {
+    } else if !downloaded {
         Err("the browser didn't download 2.0".into())
-    } else if got_v2 {
-        println!(
-            "  updated to 2.0 with {}",
-            if patched {
-                "a puffin patch"
-            } else {
-                "the full crx"
-            }
-        );
-        Ok(())
-    } else if protocol == Protocol::Omaha4 && proof_missing {
-        println!(
-            "  downloaded and verified 2.0, then stopped at the Web Store publisher proof, \
-             which only Google can sign"
-        );
-        Ok(())
-    } else {
+    } else if !updated {
         Err("the browser didn't update to 2.0".into())
+    } else {
+        println!("  updated to 2.0");
+        Ok(())
     };
 
     finish(args, dir, &server, &policy, result)

@@ -1,30 +1,19 @@
 # omaha
 
-Rust tools for Chromium's update protocol (Omaha): CRX3 packages, CUP2
-response signing, update checks and component feeds.
+Rust crates for Chromium's update protocol (Omaha): serve extensions,
+components and browser updates from your own servers.
+
+| Crate | Use it to |
+|---|---|
+| [`crx3`](crates/crx3) | build, sign and verify CRX3 packages |
+| [`cup2`](crates/cup2) | sign update responses with CUP2, or verify them |
+| [`omaha-protocol`](crates/omaha-protocol) | read and write Omaha 4 and update2 requests and responses |
+| [`omaha-server`](crates/omaha-server) | run an update endpoint that answers from your own sources or a signed release index |
+| [`omaha-diff`](crates/omaha-diff) | make patches with Chromium's puffin and zucchini |
+| [`omaha-publish`](crates/omaha-publish) | publish CRXs, patches and a signed index to object storage, as a library or the `omaha-publish` CLI |
+| [`omaha`](crates/omaha) | get all of them through one crate, behind features |
 
 Early development. APIs will change.
-
-## Testing
-
-`cargo test --workspace` runs the unit tests, and the Chromium conformance
-tests once `scripts/fetch-chromium-testdata` has fetched Chromium's own test
-files.
-
-`support/conformance` runs a real browser against `omaha-server`: it
-force-installs a test extension through a managed policy, publishes a new
-version with `omaha-publish`, and checks the browser updates to it, over
-both update2 and Omaha 4. CI runs it with Chrome for Testing:
-
-```sh
-.github/scripts/conformance.sh
-```
-
-It needs `sudo` to write the policy, under
-`/etc/opt/chrome_for_testing/policies/managed`. A stock browser can't finish
-an Omaha 4 extension update, because Web Store updates need a publisher
-proof that only Google can sign, so that scenario passes once the browser
-has checked, downloaded and verified the update.
 
 ## License
 
