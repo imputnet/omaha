@@ -118,7 +118,7 @@ fn checks_required_key_hashes() {
         verify(
             &file,
             &Policy {
-                required_keys: &[[0; 32]],
+                required_keys: &[crx3::KeyHash::from_bytes([0; 32])],
                 any_of: &[]
             }
         ),
@@ -137,10 +137,7 @@ fn checks_pinned_key() {
         return;
     };
     let v = verify(&publisher, &PUBLISHER).unwrap();
-    assert_eq!(
-        (v.id.as_str(), v.public_key),
-        (e.ojj_id.as_str(), &e.ojj_key[..])
-    );
+    assert_eq!((&v.id, &v.public_key), (&e.ojj_id, &e.ojj_key));
     assert_eq!(
         verify(&test_publisher, &PUBLISHER),
         Err(VerifyError::RequiredProofMissing)
@@ -152,10 +149,7 @@ fn checks_pinned_key() {
 
     assert_eq!(verify(&publisher, &PUBLISHER_OR_TEST).unwrap().id, e.ojj_id);
     let v = verify(&test_publisher, &PUBLISHER_OR_TEST).unwrap();
-    assert_eq!(
-        (v.id.as_str(), v.public_key),
-        (e.jln_id.as_str(), &e.jln_key[..])
-    );
+    assert_eq!((&v.id, &v.public_key), (&e.jln_id, &e.jln_key));
     assert_eq!(v.verified_contents, None);
     assert_eq!(
         verify(&none, &PUBLISHER_OR_TEST),

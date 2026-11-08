@@ -10,11 +10,11 @@ const ARCHIVE: &[u8] = b"PK\x03\x04 not really a zip, but proofs don't care";
 #[test]
 fn rsa_developer_key() {
     let dev = RsaSigner::generate().unwrap();
-    let crx = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    let crx = Builder::new().signer(&dev).build(ARCHIVE).unwrap();
     let v = verify(&crx, &Policy::default()).unwrap();
     assert_eq!(v.id, id_from_public_key(dev.public_key()));
     assert_eq!(v.public_key, dev.public_key());
-    assert_eq!(v.archive, ARCHIVE);
+    assert_eq!(v.archive_offset as usize, crx.len() - ARCHIVE.len());
     assert!(!v.diff);
 }
 
@@ -22,11 +22,11 @@ fn rsa_developer_key() {
 fn ecdsa_developer_key_and_publisher() {
     let dev = EcdsaSigner::generate().unwrap();
     let publisher = EcdsaSigner::generate().unwrap();
-    let crx = Builder::new(ARCHIVE)
+    let crx = Builder::new()
         .signer(&dev)
         .signer(&publisher)
         .verified_contents(b"vc")
-        .build()
+        .build(ARCHIVE)
         .unwrap();
     let pinned = [key_hash(publisher.public_key())];
     let v = verify(
@@ -38,7 +38,7 @@ fn ecdsa_developer_key_and_publisher() {
     )
     .unwrap();
     assert_eq!(v.id, id_from_public_key(dev.public_key()));
-    assert_eq!(v.verified_contents, Some(&b"vc"[..]));
+    assert_eq!(v.verified_contents.as_deref(), Some(&b"vc"[..]));
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn append_publisher_proof_to_developer_crx() {
         any_of: &pinned,
     };
 
-    let crx = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    let crx = Builder::new().signer(&dev).build(ARCHIVE).unwrap();
     assert_eq!(
         verify(&crx, &policy),
         Err(VerifyError::RequiredProofMissing)
@@ -67,7 +67,7 @@ fn required_keys_need_their_own_proofs() {
     let dev = RsaSigner::generate().unwrap();
     let extra = EcdsaSigner::generate().unwrap();
     let absent = EcdsaSigner::generate().unwrap();
-    let crx = append_proof(&Builder::new(ARCHIVE).signer(&dev).build().unwrap(), &extra).unwrap();
+    let crx = append_proof(&Builder::new().signer(&dev).build(ARCHIVE).unwrap(), &extra).unwrap();
     let have = [key_hash(extra.public_key())];
     let lack = [key_hash(absent.public_key())];
     assert!(
@@ -96,10 +96,10 @@ fn required_keys_need_their_own_proofs() {
 fn bad_extra_proof_fails_whole_crx() {
     let dev = RsaSigner::generate().unwrap();
     let extra = EcdsaSigner::generate().unwrap();
-    let crx = Builder::new(ARCHIVE)
+    let crx = Builder::new()
         .signer(&dev)
         .signer(&extra)
-        .build()
+        .build(ARCHIVE)
         .unwrap();
     let mut bad = crx.clone();
     *bad.last_mut().unwrap() ^= 1;
@@ -112,10 +112,10 @@ fn bad_extra_proof_fails_whole_crx() {
 #[test]
 fn diff_crx() {
     let dev = EcdsaSigner::generate().unwrap();
-    let crx = Builder::new(b"patch")
+    let crx = Builder::new()
         .signer(&dev)
         .diff(true)
-        .build()
+        .build(b"patch")
         .unwrap();
     assert_eq!(&crx[..4], b"CrOD");
     assert!(verify(&crx, &Policy::default()).unwrap().diff);
@@ -134,7 +134,7 @@ fn keys_round_trip_through_pkcs8() {
 #[test]
 fn no_signer() {
     assert!(matches!(
-        Builder::new(ARCHIVE).build(),
+        Builder::new().build(ARCHIVE),
         Err(crx3::BuildError::NoSigner)
     ));
 }
@@ -148,9 +148,9 @@ fn write_crosscheck_samples() {
     };
     let dev = RsaSigner::generate().unwrap();
     let publisher = EcdsaSigner::generate().unwrap();
-    let rsa_only = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    let rsa_only = Builder::new().signer(&dev).build(ARCHIVE).unwrap();
     let both = append_proof(&rsa_only, &publisher).unwrap();
-    let ec_dev = Builder::new(ARCHIVE).signer(&publisher).build().unwrap();
+    let ec_dev = Builder::new().signer(&publisher).build(ARCHIVE).unwrap();
     for (name, bytes) in [
         ("rsa.crx", &rsa_only),
         ("rsa_ecdsa.crx", &both),
@@ -166,7 +166,80 @@ fn write_crosscheck_samples() {
     std::fs::write(format!("{dir}/ids.txt"), ids).unwrap();
     std::fs::write(
         format!("{dir}/publisher.hash"),
-        key_hash(publisher.public_key()),
+        key_hash(publisher.public_key()).as_bytes(),
     )
     .unwrap();
+}
+
+struct Generated {
+    len: u64,
+    pos: u64,
+}
+
+impl std::io::Read for Generated {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = buf.len().min((self.len - self.pos) as usize);
+        for (i, b) in buf[..n].iter_mut().enumerate() {
+            *b = ((self.pos + i as u64) % 251) as u8;
+        }
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+impl std::io::Seek for Generated {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.pos = match pos {
+            std::io::SeekFrom::Start(p) => p,
+            std::io::SeekFrom::End(d) => self.len.checked_add_signed(d).unwrap(),
+            std::io::SeekFrom::Current(d) => self.pos.checked_add_signed(d).unwrap(),
+        };
+        Ok(self.pos)
+    }
+}
+
+#[test]
+fn streams_large_archives() {
+    use sha2::{Digest, Sha256};
+    use std::io::{Seek, SeekFrom};
+
+    let len = 64 << 20;
+    let dev = RsaSigner::generate().unwrap();
+    let publisher = EcdsaSigner::generate().unwrap();
+    let path = std::env::temp_dir().join(format!("crx3-stream-{}.crx", std::process::id()));
+    let mut file = std::fs::File::options()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .unwrap();
+    Builder::new()
+        .signer(&dev)
+        .write(Generated { len, pos: 0 }, &mut file)
+        .unwrap();
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let mut appended = Vec::new();
+    crx3::append_proof_to(&mut file, &publisher, &mut appended).unwrap();
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let v = crx3::verify_reader(&mut file, &Policy::default()).unwrap();
+    assert_eq!(v.id, id_from_public_key(dev.public_key()));
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).unwrap();
+    assert_eq!(v.file_sha256, <[u8; 32]>::from(hasher.finalize()));
+
+    let pinned = [key_hash(publisher.public_key())];
+    let v = crx3::verify_reader(
+        &appended[..],
+        &Policy {
+            required_keys: &[],
+            any_of: &pinned,
+        },
+    )
+    .unwrap();
+    assert_eq!(v.id, id_from_public_key(dev.public_key()));
+    std::fs::remove_file(&path).unwrap();
 }

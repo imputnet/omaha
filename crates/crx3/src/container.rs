@@ -1,4 +1,7 @@
+use crate::key::SignedDataDigest;
+use sha2::{Digest, Sha256};
 use std::fmt;
+use std::io::{self, Read, Write};
 
 /// Magic bytes at the start of a CRX file.
 pub const MAGIC: [u8; 4] = *b"Cr24";
@@ -6,6 +9,9 @@ pub const MAGIC: [u8; 4] = *b"Cr24";
 pub const MAGIC_DIFF: [u8; 4] = *b"CrOD";
 /// Prefix of the data every CRX3 proof signs.
 pub const SIGNATURE_CONTEXT: &[u8; 16] = b"CRX3 SignedData\0";
+/// Largest header accepted when reading, which bounds memory use before any
+/// signature is checked.
+pub const MAX_HEADER_LEN: usize = 16 << 20;
 
 pub(crate) const VERSION: u32 = 3;
 const PREFIX_LEN: usize = 12;
@@ -27,6 +33,7 @@ pub enum SplitError {
     BadMagic,
     UnsupportedVersion(u32),
     Truncated,
+    HeaderTooLarge,
 }
 
 impl fmt::Display for SplitError {
@@ -35,16 +42,14 @@ impl fmt::Display for SplitError {
             SplitError::BadMagic => f.write_str("not a CRX file"),
             SplitError::UnsupportedVersion(v) => write!(f, "unsupported CRX version {v}"),
             SplitError::Truncated => f.write_str("truncated CRX file"),
+            SplitError::HeaderTooLarge => f.write_str("CRX header too large"),
         }
     }
 }
 
 impl std::error::Error for SplitError {}
 
-/// Splits a CRX3 file into header and archive. Does not parse or verify the
-/// header.
-pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
-    let prefix = bytes.get(..PREFIX_LEN).ok_or(SplitError::Truncated)?;
+fn parse_prefix(prefix: &[u8; PREFIX_LEN]) -> Result<(bool, usize), SplitError> {
     let diff = match &prefix[0..4] {
         m if m == MAGIC => false,
         m if m == MAGIC_DIFF => true,
@@ -55,6 +60,17 @@ pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
         return Err(SplitError::UnsupportedVersion(version));
     }
     let header_len = u32::from_le_bytes(prefix[8..12].try_into().unwrap()) as usize;
+    if header_len > MAX_HEADER_LEN {
+        return Err(SplitError::HeaderTooLarge);
+    }
+    Ok((diff, header_len))
+}
+
+/// Splits a CRX3 file into header and archive. Does not parse or verify the
+/// header.
+pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
+    let prefix = bytes.get(..PREFIX_LEN).ok_or(SplitError::Truncated)?;
+    let (diff, header_len) = parse_prefix(prefix.try_into().unwrap())?;
     let rest = &bytes[PREFIX_LEN..];
     if rest.len() < header_len {
         return Err(SplitError::Truncated);
@@ -67,28 +83,79 @@ pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
     })
 }
 
-/// Writes a CRX3 file from its parts.
-pub(crate) fn join(diff: bool, header: &[u8], archive: &[u8]) -> Option<Vec<u8>> {
-    let header_len = u32::try_from(header.len()).ok()?;
-    let mut out = Vec::with_capacity(PREFIX_LEN + header.len() + archive.len());
-    out.extend(if diff { MAGIC_DIFF } else { MAGIC });
-    out.extend(VERSION.to_le_bytes());
-    out.extend(header_len.to_le_bytes());
-    out.extend(header);
-    out.extend(archive);
-    Some(out)
+#[derive(Debug)]
+pub(crate) enum ReadError {
+    Invalid,
+    Io(io::Error),
 }
 
-/// The bytes every proof signs.
-pub(crate) fn signing_message(signed_header_data: &[u8], archive: &[u8]) -> Option<Vec<u8>> {
-    let len = u32::try_from(signed_header_data.len()).ok()?;
-    let mut msg =
-        Vec::with_capacity(SIGNATURE_CONTEXT.len() + 4 + signed_header_data.len() + archive.len());
-    msg.extend(SIGNATURE_CONTEXT);
-    msg.extend(len.to_le_bytes());
-    msg.extend(signed_header_data);
-    msg.extend(archive);
-    Some(msg)
+/// Reads the prefix and header, leaving `reader` at the start of the archive.
+/// Returns whether it's a diff, the header, and the bytes read so far.
+pub(crate) fn read_header(mut reader: impl Read) -> Result<(bool, Vec<u8>, Vec<u8>), ReadError> {
+    let mut prefix = [0u8; PREFIX_LEN];
+    read_exact(&mut reader, &mut prefix)?;
+    let (diff, header_len) = parse_prefix(&prefix).map_err(|_| ReadError::Invalid)?;
+    let mut header = vec![0u8; header_len];
+    read_exact(&mut reader, &mut header)?;
+    Ok((diff, header, prefix.to_vec()))
+}
+
+fn read_exact(mut reader: impl Read, buf: &mut [u8]) -> Result<(), ReadError> {
+    reader.read_exact(buf).map_err(|e| match e.kind() {
+        io::ErrorKind::UnexpectedEof => ReadError::Invalid,
+        _ => ReadError::Io(e),
+    })
+}
+
+/// Writes the prefix and header of a CRX3 file.
+pub(crate) fn write_header(mut out: impl Write, diff: bool, header: &[u8]) -> io::Result<()> {
+    let header_len = u32::try_from(header.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "CRX header too large"))?;
+    out.write_all(if diff { &MAGIC_DIFF } else { &MAGIC })?;
+    out.write_all(&VERSION.to_le_bytes())?;
+    out.write_all(&header_len.to_le_bytes())?;
+    out.write_all(header)
+}
+
+/// SHA-256 of the data every proof signs: the signature context, the signed
+/// header data and the archive, fed in as it streams.
+pub(crate) struct MessageHasher(Sha256);
+
+impl MessageHasher {
+    pub(crate) fn new(signed_header_data: &[u8]) -> Option<Self> {
+        let len = u32::try_from(signed_header_data.len()).ok()?;
+        let mut h = Sha256::new();
+        h.update(SIGNATURE_CONTEXT);
+        h.update(len.to_le_bytes());
+        h.update(signed_header_data);
+        Some(MessageHasher(h))
+    }
+
+    pub(crate) fn update(&mut self, archive_chunk: &[u8]) {
+        self.0.update(archive_chunk);
+    }
+
+    pub(crate) fn finish(self) -> SignedDataDigest {
+        SignedDataDigest::new(self.0.finalize().into())
+    }
+}
+
+/// Feeds the rest of `reader` to `f` in chunks, returning the number of
+/// bytes read.
+pub(crate) fn stream(mut reader: impl Read, mut f: impl FnMut(&[u8])) -> io::Result<u64> {
+    let mut buf = vec![0u8; 64 << 10];
+    let mut total = 0u64;
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => return Ok(total),
+            Ok(n) => {
+                f(&buf[..n]);
+                total += n as u64;
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Zip end-of-central-directory tokens. Chromium rejects headers that contain
@@ -103,28 +170,38 @@ pub(crate) fn contains_zip_token(header: &[u8]) -> bool {
 mod tests {
     use super::*;
 
+    fn join(diff: bool, header: &[u8], archive: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        write_header(&mut out, diff, header).unwrap();
+        out.extend(archive);
+        out
+    }
+
     #[test]
     fn splits_and_joins() {
-        let bytes = join(false, b"hdr", b"PK\x03\x04").unwrap();
+        let bytes = join(false, b"hdr", b"PK\x03\x04");
         let parts = split(&bytes).unwrap();
         assert!(!parts.diff);
         assert_eq!(parts.header, b"hdr");
         assert_eq!(parts.archive, b"PK\x03\x04");
-        assert!(split(&join(true, b"", b"x").unwrap()).unwrap().diff);
+        assert!(split(&join(true, b"", b"x")).unwrap().diff);
     }
 
     #[test]
     fn rejects() {
         assert_eq!(split(b"Cr24"), Err(SplitError::Truncated));
-        let mut bad = join(false, b"", b"").unwrap();
+        let mut bad = join(false, b"", b"");
         bad[0] = b'X';
         assert_eq!(split(&bad), Err(SplitError::BadMagic));
-        let mut v2 = join(false, b"", b"").unwrap();
+        let mut v2 = join(false, b"", b"");
         v2[4] = 2;
         assert_eq!(split(&v2), Err(SplitError::UnsupportedVersion(2)));
-        let mut short = join(false, b"header", b"").unwrap();
+        let mut short = join(false, b"header", b"");
         short.pop();
         assert_eq!(split(&short), Err(SplitError::Truncated));
+        let mut huge = join(false, b"", b"");
+        huge[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(split(&huge), Err(SplitError::HeaderTooLarge));
     }
 
     #[test]
@@ -133,5 +210,19 @@ mod tests {
         assert!(contains_zip_token(b"PK\x06\x07"));
         assert!(contains_zip_token(b"PK\x06\x06"));
         assert!(!contains_zip_token(b"PK\x03\x04PK\x05"));
+    }
+
+    #[test]
+    fn message_hash_matches_concatenation() {
+        let mut h = MessageHasher::new(b"signed").unwrap();
+        h.update(b"arch");
+        h.update(b"ive");
+        let mut msg = SIGNATURE_CONTEXT.to_vec();
+        msg.extend(6u32.to_le_bytes());
+        msg.extend(b"signedarchive");
+        assert_eq!(
+            h.finish().as_bytes(),
+            &<[u8; 32]>::from(Sha256::digest(&msg))
+        );
     }
 }

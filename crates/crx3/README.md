@@ -15,10 +15,10 @@ let archive = std::fs::read("extension.zip").expect("read archive");
 // proofs over the same data, such as a store's publisher key.
 let developer = RsaSigner::generate().expect("generate key");
 let store = EcdsaSigner::generate().expect("generate key");
-let crx = Builder::new(&archive)
+let crx = Builder::new()
     .signer(&developer)
     .signer(&store)
-    .build()
+    .build(&archive)
     .expect("build crx");
 
 // Require a valid developer proof and a proof by the store's key.
@@ -28,9 +28,10 @@ let verified = verify(&crx, &Policy { required_keys: &[], any_of: &pinned })
 println!("extension id: {}", verified.id);
 ```
 
-`append_proof` adds a proof to a package someone else signed, without their
-key. Signing goes through the `Signer` trait, so keys can also live in an
-HSM or a remote signing service.
+`Builder::write`, `append_proof_to` and `verify_reader` stream the archive
+instead of holding it in memory. `append_proof` adds a proof to a package
+someone else signed, without their key. Signers only receive the SHA-256 of
+the signed data, so keys can live in an HSM or a remote signing service.
 
 ## Features
 

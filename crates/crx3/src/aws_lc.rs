@@ -1,8 +1,8 @@
 //! Signers backed by aws-lc-rs.
 
-use crate::key::{Algorithm, SignError, Signer};
+use crate::key::{Algorithm, SignError, SignedDataDigest, Signer};
+use aws_lc_rs::digest::{Digest, SHA256};
 use aws_lc_rs::encoding::AsDer;
-use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::rsa::KeySize;
 use aws_lc_rs::signature::{
     ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, RSA_PKCS1_SHA256, RsaKeyPair,
@@ -22,6 +22,10 @@ impl std::error::Error for KeyError {}
 
 fn key_err(e: impl std::fmt::Display) -> KeyError {
     KeyError(e.to_string())
+}
+
+fn sign_err(e: impl std::fmt::Display) -> SignError {
+    SignError::new(e.to_string())
 }
 
 /// An RSA key signing with RSASSA-PKCS1-v1_5 and SHA-256.
@@ -67,11 +71,12 @@ impl Signer for RsaSigner {
         &self.spki
     }
 
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, SignError> {
+    fn sign(&self, digest: &SignedDataDigest) -> Result<Vec<u8>, SignError> {
+        let digest = Digest::import_less_safe(digest.as_bytes(), &SHA256).map_err(sign_err)?;
         let mut sig = vec![0; self.key.public_modulus_len()];
         self.key
-            .sign(&RSA_PKCS1_SHA256, &SystemRandom::new(), message, &mut sig)
-            .map_err(|e| SignError::new(e.to_string()))?;
+            .sign_digest(&RSA_PKCS1_SHA256, &digest, &mut sig)
+            .map_err(sign_err)?;
         Ok(sig)
     }
 }
@@ -118,11 +123,9 @@ impl Signer for EcdsaSigner {
         &self.spki
     }
 
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, SignError> {
-        let sig = self
-            .key
-            .sign(&SystemRandom::new(), message)
-            .map_err(|e| SignError::new(e.to_string()))?;
+    fn sign(&self, digest: &SignedDataDigest) -> Result<Vec<u8>, SignError> {
+        let digest = Digest::import_less_safe(digest.as_bytes(), &SHA256).map_err(sign_err)?;
+        let sig = self.key.sign_digest(&digest).map_err(sign_err)?;
         Ok(sig.as_ref().to_vec())
     }
 }

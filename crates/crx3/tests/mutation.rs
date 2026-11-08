@@ -29,12 +29,12 @@ fn mutated_files_never_panic() {
         any_of: &pinned,
     };
     let archive = vec![0x42; 12 * 1024];
-    let rsa = Builder::new(&archive).signer(&dev).build().unwrap();
+    let rsa = Builder::new().signer(&dev).build(&archive).unwrap();
     let both = append_proof(&rsa, &publisher).unwrap();
-    let ecdsa = Builder::new(&archive)
+    let ecdsa = Builder::new()
         .signer(&publisher)
         .verified_contents(b"vc")
-        .build()
+        .build(&archive)
         .unwrap();
     for original in [rsa, both, ecdsa] {
         let hot = original.len() - archive.len() + 64;

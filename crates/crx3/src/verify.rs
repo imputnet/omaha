@@ -1,13 +1,16 @@
-use crate::container::{SplitError, contains_zip_token, signing_message, split};
+use crate::container::{MessageHasher, ReadError, contains_zip_token, read_header, stream};
 use crate::id::id_from_hash;
 use crate::key::{KeyHash, key_hash};
-use crate::proto::{Proof, decode_header, decode_signed_data};
+use crate::proto::{decode_header, decode_signed_data};
+use aws_lc_rs::digest::{Digest as LcDigest, SHA256};
 use aws_lc_rs::encoding::AsDer;
 use aws_lc_rs::signature::{
     ECDSA_P256_SHA256_ASN1, ParsedPublicKey, RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
     VerificationAlgorithm,
 };
+use sha2::{Digest, Sha256};
 use std::fmt;
+use std::io::{self, Read};
 
 /// Extra requirements on top of a valid developer proof.
 #[derive(Clone, Copy, Debug, Default)]
@@ -22,15 +25,18 @@ pub struct Policy<'a> {
 
 /// A verified CRX3 file.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Verified<'a> {
+pub struct Verified {
     /// The extension ID.
     pub id: String,
     /// The developer key (DER SubjectPublicKeyInfo) whose hash is the ID.
-    pub public_key: &'a [u8],
+    pub public_key: Vec<u8>,
     /// Compressed `verified_contents`, if the header has them.
-    pub verified_contents: Option<&'a [u8]>,
+    pub verified_contents: Option<Vec<u8>>,
     pub diff: bool,
-    pub archive: &'a [u8],
+    /// Where the archive starts in the file.
+    pub archive_offset: u64,
+    /// SHA-256 of the whole file.
+    pub file_sha256: [u8; 32],
 }
 
 /// Mirrors Chromium's `crx_file::VerifierResult` errors.
@@ -43,24 +49,36 @@ pub enum VerifyError {
     /// No proof by the ID key, or a required key's proof is missing.
     RequiredProofMissing,
     SignatureVerificationFailed,
+    /// Reading the file failed.
+    Io(io::ErrorKind),
 }
 
 impl fmt::Display for VerifyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            VerifyError::HeaderInvalid => "invalid CRX header",
-            VerifyError::SignatureInitializationFailed => "unusable key in CRX proof",
-            VerifyError::RequiredProofMissing => "required CRX proof missing",
-            VerifyError::SignatureVerificationFailed => "CRX signature verification failed",
-        })
+        match self {
+            VerifyError::HeaderInvalid => f.write_str("invalid CRX header"),
+            VerifyError::SignatureInitializationFailed => f.write_str("unusable key in CRX proof"),
+            VerifyError::RequiredProofMissing => f.write_str("required CRX proof missing"),
+            VerifyError::SignatureVerificationFailed => {
+                f.write_str("CRX signature verification failed")
+            }
+            VerifyError::Io(kind) => write!(f, "reading CRX failed: {kind}"),
+        }
     }
 }
 
 impl std::error::Error for VerifyError {}
 
-impl From<SplitError> for VerifyError {
-    fn from(_: SplitError) -> Self {
-        VerifyError::HeaderInvalid
+struct HashingReader<R> {
+    inner: R,
+    hasher: Sha256,
+}
+
+impl<R: Read> Read for HashingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.hasher.update(&buf[..n]);
+        Ok(n)
     }
 }
 
@@ -78,48 +96,50 @@ fn parse_key(
     }
 }
 
-/// Verifies a CRX3 file the way Chromium's `crx_file::Verify` does.
-///
-/// Differences from Chromium: ECDSA proofs must use P-256 (Chromium accepts
-/// any curve with SHA-256), and the whole file is in memory.
-pub fn verify<'a>(crx: &'a [u8], policy: &Policy<'_>) -> Result<Verified<'a>, VerifyError> {
-    let parts = split(crx)?;
-    if contains_zip_token(parts.header) {
+/// Verifies a CRX3 file in memory. See [`verify_reader`].
+pub fn verify(crx: &[u8], policy: &Policy<'_>) -> Result<Verified, VerifyError> {
+    verify_reader(crx, policy)
+}
+
+/// Verifies a CRX3 file the way Chromium's `crx_file::Verify` does, reading
+/// it once. Memory use is bounded by the header size, at most
+/// [`crate::MAX_HEADER_LEN`].
+pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified, VerifyError> {
+    let mut reader = HashingReader {
+        inner: reader,
+        hasher: Sha256::new(),
+    };
+    let (diff, header_bytes, _) = read_header(&mut reader).map_err(|e| match e {
+        ReadError::Invalid => VerifyError::HeaderInvalid,
+        ReadError::Io(e) => VerifyError::Io(e.kind()),
+    })?;
+    if contains_zip_token(&header_bytes) {
         return Err(VerifyError::HeaderInvalid);
     }
-    let header = decode_header(parts.header).map_err(|_| VerifyError::HeaderInvalid)?;
+    let header = decode_header(&header_bytes).map_err(|_| VerifyError::HeaderInvalid)?;
     let crx_id =
         decode_signed_data(header.signed_header_data).map_err(|_| VerifyError::HeaderInvalid)?;
 
     let mut developer_key = None;
     let mut missing: Vec<&KeyHash> = policy.required_keys.iter().collect();
     let mut found_any_of = false;
-    let mut checks: Vec<(ParsedPublicKey, &Proof<'a>)> = Vec::new();
+    let mut checks = Vec::new();
 
+    let rsa: &'static dyn VerificationAlgorithm = &RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY;
+    let ecdsa: &'static dyn VerificationAlgorithm = &ECDSA_P256_SHA256_ASN1;
     let proofs = header
         .sha256_with_rsa
         .iter()
-        .map(|p| {
-            (
-                &RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY
-                    as &'static dyn VerificationAlgorithm,
-                p,
-            )
-        })
-        .chain(
-            header
-                .sha256_with_ecdsa
-                .iter()
-                .map(|p| (&ECDSA_P256_SHA256_ASN1 as _, p)),
-        );
+        .map(|p| (rsa, p))
+        .chain(header.sha256_with_ecdsa.iter().map(|p| (ecdsa, p)));
     for (alg, proof) in proofs {
         let hash = key_hash(proof.public_key);
-        if crx_id.len() == 16 && hash[..16] == *crx_id {
+        if crx_id.len() == 16 && hash.as_bytes()[..16] == *crx_id {
             developer_key = Some(proof.public_key);
         }
         missing.retain(|k| **k != hash);
         found_any_of |= policy.any_of.contains(&hash);
-        checks.push((parse_key(alg, proof.public_key)?, proof));
+        checks.push((parse_key(alg, proof.public_key)?, proof.signature));
     }
 
     let developer_key = developer_key.ok_or(VerifyError::RequiredProofMissing)?;
@@ -127,18 +147,22 @@ pub fn verify<'a>(crx: &'a [u8], policy: &Policy<'_>) -> Result<Verified<'a>, Ve
         return Err(VerifyError::RequiredProofMissing);
     }
 
-    let message = signing_message(header.signed_header_data, parts.archive)
-        .ok_or(VerifyError::HeaderInvalid)?;
-    for (key, proof) in &checks {
-        key.verify_sig(&message, proof.signature)
+    let mut hasher =
+        MessageHasher::new(header.signed_header_data).ok_or(VerifyError::HeaderInvalid)?;
+    stream(&mut reader, |chunk| hasher.update(chunk)).map_err(|e| VerifyError::Io(e.kind()))?;
+    let digest = LcDigest::import_less_safe(hasher.finish().as_bytes(), &SHA256)
+        .expect("SHA-256 digest is 32 bytes");
+    for (key, signature) in &checks {
+        key.verify_digest_sig(&digest, signature)
             .map_err(|_| VerifyError::SignatureVerificationFailed)?;
     }
 
     Ok(Verified {
         id: id_from_hash(crx_id),
-        public_key: developer_key,
-        verified_contents: header.verified_contents,
-        diff: parts.diff,
-        archive: parts.archive,
+        public_key: developer_key.to_vec(),
+        verified_contents: header.verified_contents.map(<[u8]>::to_vec),
+        diff,
+        archive_offset: 12 + header_bytes.len() as u64,
+        file_sha256: reader.hasher.finalize().into(),
     })
 }

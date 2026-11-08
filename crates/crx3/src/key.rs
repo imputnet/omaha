@@ -1,12 +1,48 @@
 use sha2::{Digest, Sha256};
 use std::fmt;
 
-/// SHA-256 of a DER-encoded SubjectPublicKeyInfo.
-pub type KeyHash = [u8; 32];
+/// SHA-256 of a DER-encoded SubjectPublicKeyInfo, which is how Chromium
+/// pins and compares keys.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyHash([u8; 32]);
 
-/// The hash Chromium pins and compares keys by.
+impl KeyHash {
+    /// A pinned hash, e.g. from a browser's source.
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        KeyHash(bytes)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for KeyHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "KeyHash(")?;
+        self.0.iter().try_for_each(|b| write!(f, "{b:02x}"))?;
+        write!(f, ")")
+    }
+}
+
+/// The hash of a key, as Chromium computes it.
 pub fn key_hash(spki: &[u8]) -> KeyHash {
-    Sha256::digest(spki).into()
+    KeyHash(Sha256::digest(spki).into())
+}
+
+/// SHA-256 of the data a CRX3 proof covers. Only this crate creates these,
+/// so a [`Signer`] can't be handed any other hash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SignedDataDigest([u8; 32]);
+
+impl SignedDataDigest {
+    pub(crate) fn new(bytes: [u8; 32]) -> Self {
+        SignedDataDigest(bytes)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
 }
 
 /// The proof types CRX3 supports.
@@ -21,12 +57,15 @@ pub enum Algorithm {
 
 /// Something that can produce a CRX3 proof: a key in memory, an HSM, or a
 /// remote signing service.
+///
+/// Signers only ever see the SHA-256 of the signed data, never the archive.
 pub trait Signer {
     fn algorithm(&self) -> Algorithm;
     /// The DER-encoded SubjectPublicKeyInfo of the signing key.
     fn public_key(&self) -> &[u8];
-    /// Signs `message` (not a digest of it) with the key's algorithm.
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, SignError>;
+    /// Signs `digest` with the key's algorithm: RSASSA-PKCS1-v1_5 or ECDSA
+    /// (DER) over SHA-256.
+    fn sign(&self, digest: &SignedDataDigest) -> Result<Vec<u8>, SignError>;
 }
 
 /// A signer failed to produce a signature.
