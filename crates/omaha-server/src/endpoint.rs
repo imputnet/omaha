@@ -79,6 +79,15 @@ impl EndpointBuilder {
         self
     }
 
+    /// Sends apps without a source of their own to `source` instead of
+    /// answering them with `error-unknownApplication`.
+    pub fn fallback(mut self, source: impl Source + 'static) -> Self {
+        let index = self.inner.sources.len();
+        self.inner.sources.push(Box::new(source));
+        self.inner.router = self.inner.router.fallback(index);
+        self
+    }
+
     /// Signs Omaha 4 responses to requests that carry `cup2key`.
     pub fn cup(mut self, server: cup2::Server) -> Self {
         self.inner.cup = Some(server);

@@ -5,6 +5,7 @@ use std::hash::Hash;
 #[derive(Clone, Debug)]
 pub struct Router<S> {
     routes: HashMap<String, S>,
+    fallback: Option<S>,
 }
 
 /// One source's share of an update check.
@@ -28,11 +29,18 @@ impl<S: Clone + Eq + Hash> Router<S> {
     pub fn new() -> Self {
         Router {
             routes: HashMap::new(),
+            fallback: None,
         }
     }
 
     pub fn route(mut self, appid: impl Into<String>, source: S) -> Self {
         self.routes.insert(appid.into(), source);
+        self
+    }
+
+    /// Routes every app ID without a route of its own to `source`.
+    pub fn fallback(mut self, source: S) -> Self {
+        self.fallback = Some(source);
         self
     }
 
@@ -43,7 +51,7 @@ impl<S: Clone + Eq + Hash> Router<S> {
         let mut index: HashMap<S, usize> = HashMap::new();
         let mut unknown = Vec::new();
         for (i, appid) in appids.into_iter().enumerate() {
-            let Some(source) = self.routes.get(appid) else {
+            let Some(source) = self.routes.get(appid).or(self.fallback.as_ref()) else {
                 unknown.push(i);
                 continue;
             };
@@ -91,6 +99,26 @@ mod tests {
             ]
         );
         assert_eq!(split.unknown, vec![1, 4]);
+    }
+
+    #[test]
+    fn falls_back() {
+        let router = Router::new().route("a", "local").fallback("upstream");
+        let split = router.split(["x", "a", "y"]);
+        assert_eq!(
+            split.routes,
+            vec![
+                Route {
+                    source: "upstream",
+                    apps: vec![0, 2]
+                },
+                Route {
+                    source: "local",
+                    apps: vec![1]
+                },
+            ]
+        );
+        assert!(split.unknown.is_empty());
     }
 
     #[test]

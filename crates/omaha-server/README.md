@@ -40,7 +40,9 @@ let endpoint = Endpoint::builder()
     .build();
 ```
 
-Add CUP2 signing with `.cup(cup2::Server::new().with(signer))`.
+Apps without a source of their own get `error-unknownApplication`, unless
+`.fallback(source)` sends them somewhere, for example to an upstream
+server. Add CUP2 signing with `.cup(cup2::Server::new().with(signer))`.
 
 ## License
 

@@ -5,8 +5,8 @@ use cup2::aws_lc::MlDsa44Signer;
 use http_body_util::{BodyExt, Full};
 use omaha_protocol::*;
 use omaha_server::{BoxFuture, Check, Endpoint, PingSink, Source};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tower_service::Service;
 
@@ -76,6 +76,32 @@ struct Canned(Vec<AppResponse>);
 impl Source for Canned {
     fn check<'a>(&'a self, _: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>> {
         Box::pin(async move { self.0.clone() })
+    }
+}
+
+/// Says "no update" and records each app ID with the request's user agent.
+#[derive(Clone, Default)]
+struct Recorder(Arc<Mutex<Vec<(String, String)>>>);
+
+impl Source for Recorder {
+    fn check<'a>(&'a self, check: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>> {
+        let agent = check
+            .headers
+            .get(http::header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let mut seen = self.0.lock().unwrap();
+        let answers = check
+            .apps
+            .iter()
+            .map(|app| {
+                seen.push((app.appid.to_string(), agent.to_owned()));
+                let mut answer = AppResponse::new(app.appid.clone(), AppStatus::Ok);
+                answer.updatecheck = Some(UpdateCheckResponse::new(Outcome::NoUpdate));
+                answer
+            })
+            .collect();
+        Box::pin(async move { answers })
     }
 }
 
@@ -377,4 +403,32 @@ async fn sends_retry_after() {
         .build();
     let response = call(&mut endpoint, post("/", &check(&[A]))).await;
     assert_eq!(response.headers()["x-retry-after"], "86400");
+}
+
+#[tokio::test]
+async fn falls_back_with_request_headers() {
+    let recorder = Recorder::default();
+    let mut endpoint = Endpoint::builder()
+        .source([id(A)], Fixed::default())
+        .fallback(recorder.clone())
+        .build();
+    let mut request = post("/", &check(&[UNKNOWN, A]));
+    request
+        .headers_mut()
+        .insert(http::header::USER_AGENT, "helium".parse().unwrap());
+    let response = decode(&call(&mut endpoint, request).await);
+
+    assert_eq!(response.apps[0].status, AppStatus::Ok);
+    assert_eq!(
+        response.apps[0].updatecheck.as_ref().map(|u| &u.outcome),
+        Some(&Outcome::NoUpdate)
+    );
+    assert!(matches!(
+        response.apps[1].updatecheck.as_ref().map(|u| &u.outcome),
+        Some(Outcome::Update { .. })
+    ));
+    assert_eq!(
+        *recorder.0.lock().unwrap(),
+        vec![(UNKNOWN.to_owned(), "helium".to_owned())]
+    );
 }
