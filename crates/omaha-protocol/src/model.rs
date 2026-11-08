@@ -278,8 +278,8 @@ pub struct Response {
 pub struct DayStart {
     /// Days since 2007-01-01 in the server's timezone.
     pub elapsed_days: u32,
-    /// Seconds since the server's midnight. Chromium's extension downloader
-    /// reads it from update2 responses.
+    /// Seconds since the server's midnight. Part of update2's `daystart`;
+    /// Chromium parses it but doesn't use it.
     pub elapsed_seconds: Option<u32>,
 }
 
