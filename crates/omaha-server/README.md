@@ -44,6 +44,11 @@ Apps without a source of their own get `error-unknownApplication`, unless
 `.fallback(source)` sends them somewhere, for example to an upstream
 server. Add CUP2 signing with `.cup(cup2::Server::new().with(signer))`.
 
+The `index` module defines a signed index of releases (JSON in a DSSE
+envelope, with a serial and an expiry against replays) and answers update
+checks from it: the newest release the client qualifies for, with a patch
+pipeline first when the client has a CRX to patch from.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or

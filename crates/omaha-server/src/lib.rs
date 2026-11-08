@@ -9,6 +9,9 @@
 //! Ping-backs are acknowledged without asking a source, and can be passed
 //! to a [`PingSink`]. Answers are checked against the request: an app gets
 //! an update check result exactly when it asked for one.
+//!
+//! The [`index`] module defines a signed list of releases and answers
+//! update checks from it.
 
 // Compile the README example as a doctest.
 #[cfg(doctest)]
@@ -16,6 +19,7 @@
 struct ReadmeDoctests;
 
 mod endpoint;
+pub mod index;
 mod router;
 mod source;
 
