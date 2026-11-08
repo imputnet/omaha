@@ -1,6 +1,6 @@
 [workspace]
 release_always = false
-pr_name = "release{% if package and version %}: {{ package }} v{{ version }}{% endif %}"
+pr_name = "{% if package and version %}{{ package }}: release v{{ version }}{% else %}repo: release{% endif %}"
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_name = "{{ package }}-v{{ version }}"
 
