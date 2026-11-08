@@ -1,7 +1,7 @@
 [package]
 name = "crx3"
 description = "Chromium CRX3 package format: IDs, headers, signing and verification"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -10,6 +10,11 @@ categories = ["parser-implementations", "encoding"]
 
 [dependencies]
 sha2.workspace = true
+aws-lc-rs = { workspace = true, optional = true }
+
+[features]
+default = ["aws-lc"]
+aws-lc = ["dep:aws-lc-rs"]
 
 [lints]
 workspace = true

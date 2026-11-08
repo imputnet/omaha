@@ -1,0 +1,34 @@
+#!/bin/sh
+# Downloads Chromium test data used by the "chromium" integration tests into
+# testdata/chromium/<revision>/ (gitignored). The files are Chromium's, under its
+# BSD-style license, and are deliberately not part of this repository.
+#
+# Without the data those tests are skipped; set
+# OMAHA_REQUIRE_CHROMIUM_TESTDATA=1 to make them fail instead (as CI does).
+set -eu
+
+# Chromium src commit the tests are pinned to.
+REV=7ff956173add630906515187ce16a956f0d2074e
+FILES="
+components/crx_file/crx_verifier_unittest.cc
+components/crx_file/id_util_unittest.cc
+components/test/data/crx_file/unsigned.crx3
+components/test/data/crx_file/valid.crx2
+components/test/data/crx_file/valid_no_publisher.crx3
+components/test/data/crx_file/valid_publisher.crx3
+components/test/data/crx_file/valid_test_publisher.crx3
+"
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+dest="$root/testdata/chromium/$REV"
+
+for file in $FILES; do
+    mkdir -p "$dest/$(dirname "$file")"
+    curl -fsSL "https://chromium.googlesource.com/chromium/src/+/$REV/$file?format=TEXT" \
+        | base64 -d > "$dest/$file.tmp"
+    mv "$dest/$file.tmp" "$dest/$file"
+done
+curl -fsSL "https://chromium.googlesource.com/chromium/src/+/$REV/LICENSE?format=TEXT" \
+    | base64 -d > "$dest/LICENSE"
+
+echo "fetched Chromium $REV test data into $dest"

@@ -7,7 +7,7 @@ pub const MAGIC_DIFF: [u8; 4] = *b"CrOD";
 /// Prefix of the data every CRX3 proof signs.
 pub const SIGNATURE_CONTEXT: &[u8; 16] = b"CRX3 SignedData\0";
 
-const VERSION: u32 = 3;
+pub(crate) const VERSION: u32 = 3;
 const PREFIX_LEN: usize = 12;
 
 /// A CRX3 file split into its parts, borrowing from the input.
@@ -22,6 +22,7 @@ pub struct Crx<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SplitError {
     BadMagic,
     UnsupportedVersion(u32),
@@ -66,47 +67,71 @@ pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
     })
 }
 
+/// Writes a CRX3 file from its parts.
+pub(crate) fn join(diff: bool, header: &[u8], archive: &[u8]) -> Option<Vec<u8>> {
+    let header_len = u32::try_from(header.len()).ok()?;
+    let mut out = Vec::with_capacity(PREFIX_LEN + header.len() + archive.len());
+    out.extend(if diff { MAGIC_DIFF } else { MAGIC });
+    out.extend(VERSION.to_le_bytes());
+    out.extend(header_len.to_le_bytes());
+    out.extend(header);
+    out.extend(archive);
+    Some(out)
+}
+
+/// The bytes every proof signs.
+pub(crate) fn signing_message(signed_header_data: &[u8], archive: &[u8]) -> Option<Vec<u8>> {
+    let len = u32::try_from(signed_header_data.len()).ok()?;
+    let mut msg =
+        Vec::with_capacity(SIGNATURE_CONTEXT.len() + 4 + signed_header_data.len() + archive.len());
+    msg.extend(SIGNATURE_CONTEXT);
+    msg.extend(len.to_le_bytes());
+    msg.extend(signed_header_data);
+    msg.extend(archive);
+    Some(msg)
+}
+
+/// Zip end-of-central-directory tokens. Chromium rejects headers that contain
+/// any of them, since a zip reader could find them before the real archive.
+const ZIP_TOKENS: [[u8; 4]; 3] = [*b"PK\x05\x06", *b"PK\x06\x07", *b"PK\x06\x06"];
+
+pub(crate) fn contains_zip_token(header: &[u8]) -> bool {
+    header.windows(4).any(|w| ZIP_TOKENS.iter().any(|t| w == t))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn crx(magic: &[u8; 4], version: u32, header: &[u8], archive: &[u8]) -> Vec<u8> {
-        let mut out = magic.to_vec();
-        out.extend(version.to_le_bytes());
-        out.extend((header.len() as u32).to_le_bytes());
-        out.extend(header);
-        out.extend(archive);
-        out
-    }
-
     #[test]
-    fn splits() {
-        let bytes = crx(&MAGIC, 3, b"hdr", b"PK\x03\x04");
+    fn splits_and_joins() {
+        let bytes = join(false, b"hdr", b"PK\x03\x04").unwrap();
         let parts = split(&bytes).unwrap();
         assert!(!parts.diff);
         assert_eq!(parts.header, b"hdr");
         assert_eq!(parts.archive, b"PK\x03\x04");
-    }
-
-    #[test]
-    fn splits_diff() {
-        let bytes = crx(&MAGIC_DIFF, 3, b"", b"x");
-        assert!(split(&bytes).unwrap().diff);
+        assert!(split(&join(true, b"", b"x").unwrap()).unwrap().diff);
     }
 
     #[test]
     fn rejects() {
         assert_eq!(split(b"Cr24"), Err(SplitError::Truncated));
-        assert_eq!(
-            split(&crx(b"PK\x03\x04", 3, b"", b"")),
-            Err(SplitError::BadMagic)
-        );
-        assert_eq!(
-            split(&crx(&MAGIC, 2, b"", b"")),
-            Err(SplitError::UnsupportedVersion(2))
-        );
-        let mut short = crx(&MAGIC, 3, b"header", b"");
-        short.truncate(short.len() - 1);
+        let mut bad = join(false, b"", b"").unwrap();
+        bad[0] = b'X';
+        assert_eq!(split(&bad), Err(SplitError::BadMagic));
+        let mut v2 = join(false, b"", b"").unwrap();
+        v2[4] = 2;
+        assert_eq!(split(&v2), Err(SplitError::UnsupportedVersion(2)));
+        let mut short = join(false, b"header", b"").unwrap();
+        short.pop();
         assert_eq!(split(&short), Err(SplitError::Truncated));
+    }
+
+    #[test]
+    fn zip_tokens() {
+        assert!(contains_zip_token(b"xxPK\x05\x06xx"));
+        assert!(contains_zip_token(b"PK\x06\x07"));
+        assert!(contains_zip_token(b"PK\x06\x06"));
+        assert!(!contains_zip_token(b"PK\x03\x04PK\x05"));
     }
 }

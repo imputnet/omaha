@@ -1,0 +1,173 @@
+#![cfg(feature = "aws-lc")]
+
+use crx3::aws_lc::{EcdsaSigner, RsaSigner};
+use crx3::{
+    Builder, Policy, Signer, VerifyError, append_proof, id_from_public_key, key_hash, verify,
+};
+
+const ARCHIVE: &[u8] = b"PK\x03\x04 not really a zip, but proofs don't care";
+
+#[test]
+fn rsa_developer_key() {
+    let dev = RsaSigner::generate().unwrap();
+    let crx = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    let v = verify(&crx, &Policy::default()).unwrap();
+    assert_eq!(v.id, id_from_public_key(dev.public_key()));
+    assert_eq!(v.public_key, dev.public_key());
+    assert_eq!(v.archive, ARCHIVE);
+    assert!(!v.diff);
+}
+
+#[test]
+fn ecdsa_developer_key_and_publisher() {
+    let dev = EcdsaSigner::generate().unwrap();
+    let publisher = EcdsaSigner::generate().unwrap();
+    let crx = Builder::new(ARCHIVE)
+        .signer(&dev)
+        .signer(&publisher)
+        .verified_contents(b"vc")
+        .build()
+        .unwrap();
+    let pinned = [key_hash(publisher.public_key())];
+    let v = verify(
+        &crx,
+        &Policy {
+            required_keys: &[],
+            any_of: &pinned,
+        },
+    )
+    .unwrap();
+    assert_eq!(v.id, id_from_public_key(dev.public_key()));
+    assert_eq!(v.verified_contents, Some(&b"vc"[..]));
+}
+
+#[test]
+fn append_publisher_proof_to_developer_crx() {
+    let dev = RsaSigner::generate().unwrap();
+    let publisher = EcdsaSigner::generate().unwrap();
+    let pinned = [key_hash(publisher.public_key())];
+    let policy = Policy {
+        required_keys: &[],
+        any_of: &pinned,
+    };
+
+    let crx = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    assert_eq!(
+        verify(&crx, &policy),
+        Err(VerifyError::RequiredProofMissing)
+    );
+
+    let crx = append_proof(&crx, &publisher).unwrap();
+    let v = verify(&crx, &policy).unwrap();
+    assert_eq!(v.id, id_from_public_key(dev.public_key()));
+}
+
+#[test]
+fn required_keys_need_their_own_proofs() {
+    let dev = RsaSigner::generate().unwrap();
+    let extra = EcdsaSigner::generate().unwrap();
+    let absent = EcdsaSigner::generate().unwrap();
+    let crx = append_proof(&Builder::new(ARCHIVE).signer(&dev).build().unwrap(), &extra).unwrap();
+    let have = [key_hash(extra.public_key())];
+    let lack = [key_hash(absent.public_key())];
+    assert!(
+        verify(
+            &crx,
+            &Policy {
+                required_keys: &have,
+                any_of: &[]
+            }
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        verify(
+            &crx,
+            &Policy {
+                required_keys: &lack,
+                any_of: &[]
+            }
+        ),
+        Err(VerifyError::RequiredProofMissing)
+    );
+}
+
+#[test]
+fn bad_extra_proof_fails_whole_crx() {
+    let dev = RsaSigner::generate().unwrap();
+    let extra = EcdsaSigner::generate().unwrap();
+    let crx = Builder::new(ARCHIVE)
+        .signer(&dev)
+        .signer(&extra)
+        .build()
+        .unwrap();
+    // Flip a byte in the archive: every proof, not just the ID key's, fails.
+    let mut bad = crx.clone();
+    *bad.last_mut().unwrap() ^= 1;
+    assert_eq!(
+        verify(&bad, &Policy::default()),
+        Err(VerifyError::SignatureVerificationFailed)
+    );
+}
+
+#[test]
+fn diff_crx() {
+    let dev = EcdsaSigner::generate().unwrap();
+    let crx = Builder::new(b"patch")
+        .signer(&dev)
+        .diff(true)
+        .build()
+        .unwrap();
+    assert_eq!(&crx[..4], b"CrOD");
+    assert!(verify(&crx, &Policy::default()).unwrap().diff);
+}
+
+#[test]
+fn keys_round_trip_through_pkcs8() {
+    let rsa = RsaSigner::generate().unwrap();
+    let again = RsaSigner::from_pkcs8(&rsa.to_pkcs8().unwrap()).unwrap();
+    assert_eq!(rsa.public_key(), again.public_key());
+    let ec = EcdsaSigner::generate().unwrap();
+    let again = EcdsaSigner::from_pkcs8(&ec.to_pkcs8().unwrap()).unwrap();
+    assert_eq!(ec.public_key(), again.public_key());
+}
+
+#[test]
+fn no_signer() {
+    assert!(matches!(
+        Builder::new(ARCHIVE).build(),
+        Err(crx3::BuildError::NoSigner)
+    ));
+}
+
+/// Writes sample CRX files for checking against other implementations.
+/// Run with CRX3_CROSSCHECK_DIR set; otherwise does nothing.
+#[test]
+fn write_crosscheck_samples() {
+    let Ok(dir) = std::env::var("CRX3_CROSSCHECK_DIR") else {
+        return;
+    };
+    let dev = RsaSigner::generate().unwrap();
+    let publisher = EcdsaSigner::generate().unwrap();
+    let rsa_only = Builder::new(ARCHIVE).signer(&dev).build().unwrap();
+    let both = append_proof(&rsa_only, &publisher).unwrap();
+    let ec_dev = Builder::new(ARCHIVE).signer(&publisher).build().unwrap();
+    for (name, bytes) in [
+        ("rsa.crx", &rsa_only),
+        ("rsa_ecdsa.crx", &both),
+        ("ecdsa.crx", &ec_dev),
+    ] {
+        std::fs::write(format!("{dir}/{name}"), bytes).unwrap();
+    }
+    let ids = format!(
+        "{}\n{}\n",
+        id_from_public_key(dev.public_key()),
+        id_from_public_key(publisher.public_key())
+    );
+    std::fs::write(format!("{dir}/ids.txt"), ids).unwrap();
+    std::fs::write(
+        format!("{dir}/publisher.hash"),
+        key_hash(publisher.public_key()),
+    )
+    .unwrap();
+}

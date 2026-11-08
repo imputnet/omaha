@@ -1,0 +1,19 @@
+[package]
+name = "omaha-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+crx3 = { path = "../crates/crx3" }
+
+[[bin]]
+name = "crx3_verify"
+path = "fuzz_targets/crx3_verify.rs"
+test = false
+doc = false
+bench = false
