@@ -18,11 +18,3 @@ commit_parsers = [
 name = "omaha"
 release = false
 
-[[package]]
-name = "omaha-diff"
-release = false
-
-[[package]]
-name = "omaha-publish"
-release = false
-
