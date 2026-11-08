@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.2...omaha-server-v0.1.3) - 2026-11-08
+
+### Changed
+
+- serve a feed from the command line
+
 ## [0.1.2](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.1...omaha-server-v0.1.2) - 2026-11-08
 
 ### Changed
