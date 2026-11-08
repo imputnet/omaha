@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/imputnet/omaha/compare/omaha-protocol-v0.2.0...omaha-protocol-v0.3.0) - 2026-11-08
+
+### Changed
+
+- bug fixes and improvements
+
 ## [0.2.0](https://github.com/imputnet/omaha/compare/omaha-protocol-v0.1.2...omaha-protocol-v0.2.0) - 2026-11-08
 
 ### Changed

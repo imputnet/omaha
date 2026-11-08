@@ -2,7 +2,7 @@
 name = "omaha"
 description = "Tools for Chromium's update protocol (Omaha): CRX3, CUP2, update checks and component feeds"
 readme = "../../README.md"
-version = "0.1.2"
+version = "0.1.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -38,12 +38,12 @@ bytes = "1"
 tower-service = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 tokio = { version = "1", default-features = false }
-omaha-protocol = { path = "crates/omaha-protocol", version = "0.2.0" }
+omaha-protocol = { path = "crates/omaha-protocol", version = "0.3.0" }
 crx3 = { path = "crates/crx3", version = "1.0.0" }
 cup2 = { path = "crates/cup2", version = "1.0.0", default-features = false }
-omaha-diff = { path = "crates/omaha-diff", version = "0.1.1" }
-omaha-server = { path = "crates/omaha-server", version = "0.1.4" }
-omaha-publish = { path = "crates/omaha-publish", version = "0.1.3", default-features = false }
+omaha-diff = { path = "crates/omaha-diff", version = "0.1.2" }
+omaha-server = { path = "crates/omaha-server", version = "0.1.5" }
+omaha-publish = { path = "crates/omaha-publish", version = "0.2.0", default-features = false }
 chromium-testdata = { path = "support/chromium-testdata" }
 
 [workspace.lints.rust]

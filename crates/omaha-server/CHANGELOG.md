@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.4...omaha-server-v0.1.5) - 2026-11-08
+
+### Changed
+
+- crx3, cup2: stabilize for 1.0.0
+- bug fixes and improvements
+
 ## [0.1.4](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.3...omaha-server-v0.1.4) - 2026-11-08
 
 ### Changed
