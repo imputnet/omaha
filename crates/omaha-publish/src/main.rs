@@ -126,6 +126,9 @@ struct Feed {
     /// Days a newly signed index stays valid.
     #[arg(long, default_value_t = 14)]
     lifetime_days: u64,
+    /// Build on the stored index even if it has expired.
+    #[arg(long)]
+    accept_expired: bool,
 }
 
 struct Opened {
@@ -152,6 +155,7 @@ impl Feed {
 
         let policy = Policy {
             lifetime: Duration::from_secs(self.lifetime_days.saturating_mul(86400)),
+            accept_expired: self.accept_expired,
             ..Policy::default()
         };
         Ok(Opened {

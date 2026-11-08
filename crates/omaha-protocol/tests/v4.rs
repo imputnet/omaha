@@ -605,9 +605,9 @@ fn refuses_ambiguous_statuses_and_huge_sizes() {
     ));
 }
 
-fn request_with_ping(rd: &str, ad: &str) -> Vec<u8> {
+fn request_with_ping(ping: &str) -> Vec<u8> {
     format!(
-        r#"{{"request":{{"protocol":"4.0","apps":[{{"appid":"{}","updatecheck":{{}},"ping":{{"ping_freshness":"{{a9c43d70-0000-4000-8000-000000000000}}","rd":{rd},"ad":{ad}}}}}]}}}}"#,
+        r#"{{"request":{{"protocol":"4.0","apps":[{{"appid":"{}","updatecheck":{{}},"ping":{{"ping_freshness":"{{a9c43d70-0000-4000-8000-000000000000}}",{ping}}}}}]}}}}"#,
         "a".repeat(32)
     )
     .into_bytes()
@@ -616,49 +616,51 @@ fn request_with_ping(rd: &str, ad: &str) -> Vec<u8> {
 #[cfg(feature = "activity")]
 #[test]
 fn decodes_ping_dates() {
-    let decode = |rd: &str, ad: &str| {
-        v4::decode_request(&request_with_ping(rd, ad), &Limits::default())
+    let decode = |ping: &str| {
+        v4::decode_request(&request_with_ping(ping), &Limits::default())
             .unwrap()
             .apps[0]
             .ping
+            .unwrap()
     };
-    assert_eq!(
-        decode("7251", "-2"),
-        Some(Ping {
-            roll_call: PingDay::Day(7251),
-            active: PingDay::Unknown,
-        })
-    );
-    assert_eq!(
-        decode("-1", "-1"),
-        Some(Ping {
-            roll_call: PingDay::First,
-            active: PingDay::First,
-        })
-    );
-    assert_eq!(
-        decode("\"7251\"", "-7"),
-        Some(Ping::default()),
-        "malformed dates count as unknown"
-    );
+    let ping = |roll_call, active| Ping { roll_call, active };
 
-    let mut request =
-        v4::decode_request(&request_with_ping("7250", "7249"), &Limits::default()).unwrap();
-    let encoded = v4::encode_request(&request, None).unwrap();
+    assert_eq!(decode(r#""rd":7251"#), ping(PingDay::Day(7251), None));
     assert_eq!(
-        v4::decode_request(&encoded, &Limits::default()).unwrap(),
-        request
+        decode(r#""rd":-1,"ad":-1"#),
+        ping(PingDay::First, Some(PingDay::First))
     );
-    request.apps[0].ping = None;
-    let encoded = v4::encode_request(&request, None).unwrap();
-    assert!(!String::from_utf8(encoded).unwrap().contains("ping"));
+    assert_eq!(
+        decode(r#""rd":7251,"ad":-2"#),
+        ping(PingDay::Day(7251), Some(PingDay::Unknown)),
+        "ad is only sent for apps that were used"
+    );
+    assert_eq!(
+        decode(r#""r":3,"a":0"#),
+        ping(PingDay::DaysAgo(3), Some(PingDay::DaysAgo(0)))
+    );
+    assert_eq!(decode(r#""rd":"7251""#), ping(PingDay::Day(7251), None));
+    assert_eq!(decode(r#""rd":-7"#), ping(PingDay::Unknown, None));
+
+    for ping in [r#""rd":7250,"ad":7249"#, r#""r":2,"a":-1"#, r#""rd":-2"#] {
+        let request = v4::decode_request(&request_with_ping(ping), &Limits::default()).unwrap();
+        let encoded = v4::encode_request(&request, None).unwrap();
+        assert_eq!(
+            v4::decode_request(&encoded, &Limits::default()).unwrap(),
+            request,
+            "{ping}"
+        );
+    }
 }
 
 #[cfg(not(feature = "activity"))]
 #[test]
 fn ignores_ping_dates() {
-    let request =
-        v4::decode_request(&request_with_ping("7251", "7251"), &Limits::default()).unwrap();
+    let request = v4::decode_request(
+        &request_with_ping(r#""rd":7251,"ad":7251"#),
+        &Limits::default(),
+    )
+    .unwrap();
     assert_eq!(request.apps[0].ping, None);
 }
 
@@ -668,4 +670,6 @@ fn compares_ping_days() {
     assert!(!PingDay::Day(7251).is_before(7251));
     assert!(PingDay::First.is_before(7251));
     assert!(PingDay::Unknown.is_before(7251));
+    assert!(PingDay::DaysAgo(1).is_before(7251));
+    assert!(!PingDay::DaysAgo(0).is_before(7251));
 }

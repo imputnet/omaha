@@ -2,10 +2,10 @@ use crate::release::{self, Candidate, Options, Plan, Policy, ReleaseError, Uploa
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload, UpdateVersion};
 use omaha_diff::Differ;
-use omaha_server::index::{File, Index, OpenError, SignError, Signer, Verifier};
+use omaha_server::index::{File, Index, MAX_ENVELOPE_LEN, OpenError, SignError, Signer, Verifier};
 use std::fmt;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Why reading or writing a feed failed.
 #[derive(Debug)]
@@ -24,6 +24,12 @@ pub enum StoreError {
     Conflict(String),
     /// Someone else published since the current index was read.
     Raced,
+    /// The stored index has expired, and the policy doesn't accept
+    /// building on an expired one.
+    Expired {
+        /// When it expired, in Unix seconds.
+        expires: u64,
+    },
 }
 
 impl fmt::Display for StoreError {
@@ -35,6 +41,11 @@ impl fmt::Display for StoreError {
             StoreError::Release(e) => e.fmt(f),
             StoreError::Conflict(path) => write!(f, "{path} exists with other contents"),
             StoreError::Raced => f.write_str("the index changed while publishing; try again"),
+            StoreError::Expired { expires } => write!(
+                f,
+                "the stored index expired at {expires}; check it wasn't replaced with an old one, \
+                 then accept it explicitly"
+            ),
         }
     }
 }
@@ -50,6 +61,21 @@ impl From<object_store::Error> for StoreError {
 impl From<ReleaseError> for StoreError {
     fn from(e: ReleaseError) -> Self {
         StoreError::Release(e)
+    }
+}
+
+fn unexpired(
+    current: Option<&Current>,
+    policy: &Policy,
+    now: SystemTime,
+) -> Result<(), StoreError> {
+    let now = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+
+    match current {
+        Some(c) if !policy.accept_expired && now >= c.index.expires => Err(StoreError::Expired {
+            expires: c.index.expires,
+        }),
+        _ => Ok(()),
     }
 }
 
@@ -85,6 +111,12 @@ impl Store {
             Err(object_store::Error::NotFound { .. }) => return Ok(None),
             Err(e) => return Err(e.into()),
         };
+        if result.meta.size > MAX_ENVELOPE_LEN {
+            return Err(StoreError::Index(OpenError::Envelope(
+                "larger than 16 MiB".into(),
+            )));
+        }
+
         let version = UpdateVersion {
             e_tag: result.meta.e_tag.clone(),
             version: result.meta.version.clone(),
@@ -94,11 +126,17 @@ impl Store {
         Ok(Some(Current { index, version }))
     }
 
-    /// The contents of a file the index refers to, not checked against its
-    /// hash.
+    /// The contents of a file the index refers to. Its size must match the
+    /// index; its hash isn't checked here.
     pub async fn fetch(&self, file: &File) -> Result<Vec<u8>, StoreError> {
         let path = Path::parse(&file.path).map_err(object_store::Error::from)?;
-        Ok(self.store.get(&path).await?.bytes().await?.to_vec())
+        let result = self.store.get(&path).await?;
+
+        if result.meta.size != file.size {
+            return Err(ReleaseError::SourceMismatch(file.path.clone()).into());
+        }
+
+        Ok(result.bytes().await?.to_vec())
     }
 
     /// Writes a file unless it exists. An existing file must have the same
@@ -180,6 +218,7 @@ impl Store {
         now: SystemTime,
     ) -> Result<Plan, StoreError> {
         let current = self.current(trusted).await?;
+        unexpired(current.as_ref(), policy, now)?;
         let previous = current.as_ref().map(|c| &c.index);
         let candidate = Candidate::new(crx)?;
         let mut sources = Vec::new();
@@ -216,6 +255,7 @@ impl Store {
                 source: "no index to refresh".into(),
             },
         ))?;
+        unexpired(Some(&current), policy, now)?;
         let index = release::refresh(&current.index, policy, now)?;
         self.write_index(&index, signers, Some(&current)).await?;
         Ok(index)

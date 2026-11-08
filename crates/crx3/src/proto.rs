@@ -140,11 +140,22 @@ fn decode_proof(buf: &[u8]) -> Result<Proof<'_>, DecodeError> {
     Ok(proof)
 }
 
+/// The most proofs of either algorithm a header may carry. Real packages
+/// carry a developer proof and a publisher proof or two.
+pub(crate) const MAX_PROOFS: usize = 64;
+
 pub(crate) fn decode_header(buf: &[u8]) -> Result<Header<'_>, DecodeError> {
     let mut r = Reader { buf };
     let mut header = Header::default();
     while let Some((number, wire, payload)) = r.field()? {
+        let proofs = header.sha256_with_rsa.len() + header.sha256_with_ecdsa.len();
+
         match (number, wire) {
+            (HEADER_SHA256_WITH_RSA | HEADER_SHA256_WITH_ECDSA, WIRE_LEN)
+                if proofs >= MAX_PROOFS =>
+            {
+                return Err(DecodeError);
+            }
             (HEADER_SHA256_WITH_RSA, WIRE_LEN) => {
                 header.sha256_with_rsa.push(decode_proof(payload)?)
             }
@@ -160,6 +171,7 @@ pub(crate) fn decode_header(buf: &[u8]) -> Result<Header<'_>, DecodeError> {
 }
 
 /// Decodes `SignedData` and returns its `crx_id`.
+#[cfg(any(feature = "aws-lc", test))]
 pub(crate) fn decode_signed_data(buf: &[u8]) -> Result<&[u8], DecodeError> {
     let mut r = Reader { buf };
     let mut crx_id = &[][..];
@@ -278,6 +290,19 @@ mod tests {
         assert!(header.sha256_with_rsa.is_empty());
         assert_eq!(header.signed_header_data, b"last");
         assert_eq!(header.verified_contents, None);
+    }
+
+    #[test]
+    fn limits_proofs() {
+        let proofs = |n: usize| -> Vec<u8> { [0x12, 0x00].repeat(n) };
+        assert_eq!(
+            decode_header(&proofs(MAX_PROOFS))
+                .unwrap()
+                .sha256_with_rsa
+                .len(),
+            MAX_PROOFS
+        );
+        assert!(decode_header(&proofs(MAX_PROOFS + 1)).is_err());
     }
 
     #[test]

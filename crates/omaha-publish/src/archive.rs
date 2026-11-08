@@ -125,8 +125,9 @@ pub fn archive<'a>(
     files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
     compression: Compression,
 ) -> Result<Vec<u8>, ArchiveError> {
-    let files: Vec<(&str, &[u8])> = files.into_iter().collect();
-    let order = archive_order(files.iter().map(|(path, _)| *path))?;
+    let mut files: Vec<(&str, &[u8])> = files.into_iter().collect();
+    archive_order(files.iter().map(|(path, _)| *path))?;
+    files.sort_unstable_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
     let options = SimpleFileOptions::default()
         .last_modified_time(DateTime::default())
         .unix_permissions(0o644)
@@ -139,11 +140,7 @@ pub fn archive<'a>(
     };
     let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
 
-    for path in order {
-        let data = files
-            .iter()
-            .find(|(p, _)| *p == path)
-            .map_or(&[][..], |(_, data)| *data);
+    for (path, data) in files {
         zip.start_file(path, options).map_err(zip_err)?;
         zip.write_all(data)?;
     }

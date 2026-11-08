@@ -1,21 +1,28 @@
 //! `omaha-server`: answers update checks from a signed release index.
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use hyper::server::conn::http1;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use object_store::path::Path as StorePath;
 use object_store::{ObjectStore, ObjectStoreExt};
+use omaha_server::index::MAX_ENVELOPE_LEN;
 use omaha_server::index::aws_lc::EcdsaKey;
 use omaha_server::{Endpoint, Replaced, StaticIndex};
 use std::error::Error;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Serve Chromium's update protocols from a signed release index.
 #[derive(Parser)]
@@ -29,40 +36,46 @@ struct Cli {
 enum Command {
     /// Answer Omaha 4 and update2 requests on every path, from the index
     /// at `--index`, reloaded on a timer.
-    Serve {
-        /// The signed index: `https://…/index.json`, `s3://bucket/…/index.json`
-        /// (configured through the usual `AWS_*` variables) or
-        /// `file:///…/index.json`.
-        #[arg(long)]
-        index: String,
-        /// A public key (SPKI PEM) the index must be signed by. Repeat to
-        /// accept several.
-        #[arg(long, required = true)]
-        trust: Vec<PathBuf>,
-        /// Where clients download files from, tried in order. Defaults to
-        /// the index's directory when `--index` is an HTTP(S) URL.
-        #[arg(long)]
-        base: Vec<String>,
-        /// Sign responses with this CUP key: `<version>=<key.pem>`, an
-        /// ML-DSA-44 or ECDSA P-256 PKCS#8 key. Repeat for several.
-        #[arg(long)]
-        cup_key: Vec<String>,
-        #[arg(long, default_value = "127.0.0.1:8080")]
-        listen: SocketAddr,
-        /// Seconds between index reloads.
-        #[arg(long, default_value_t = 300)]
-        reload: u64,
-        /// The `server` value in responses.
-        #[arg(long)]
-        server_name: Option<String>,
-        /// Serve Prometheus metrics on this address, e.g. 127.0.0.1:9100.
-        #[arg(long)]
-        metrics: Option<SocketAddr>,
-        /// Count daily roll calls and active reports from the dates clients
-        /// send, without identifying them.
-        #[arg(long)]
-        count_activity: bool,
-    },
+    Serve(ServeArgs),
+}
+
+#[derive(Args)]
+struct ServeArgs {
+    /// The signed index: `https://…/index.json`, `s3://bucket/…/index.json`
+    /// (configured through the usual `AWS_*` variables) or
+    /// `file:///…/index.json`.
+    #[arg(long)]
+    index: String,
+    /// A public key (SPKI PEM) the index must be signed by. Repeat to
+    /// accept several.
+    #[arg(long, required = true)]
+    trust: Vec<PathBuf>,
+    /// Where clients download files from, tried in order. Defaults to the
+    /// index's directory when `--index` is an HTTP(S) URL.
+    #[arg(long)]
+    base: Vec<String>,
+    /// Sign responses with this CUP key: `<version>=<key.pem>`, an
+    /// ML-DSA-44 or ECDSA P-256 PKCS#8 key. Repeat for several.
+    #[arg(long)]
+    cup_key: Vec<String>,
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    listen: SocketAddr,
+    /// Connections served at once; more wait to be accepted.
+    #[arg(long, default_value_t = 512)]
+    max_connections: usize,
+    /// Seconds between index reloads.
+    #[arg(long, default_value_t = 300)]
+    reload: u64,
+    /// The `server` value in responses.
+    #[arg(long)]
+    server_name: Option<String>,
+    /// Serve Prometheus metrics on this address, e.g. 127.0.0.1:9100.
+    #[arg(long)]
+    metrics: Option<SocketAddr>,
+    /// Count daily roll calls and active reports from the dates clients
+    /// send, without identifying them.
+    #[arg(long)]
+    count_activity: bool,
 }
 
 fn read_pem(path: &Path, label: &str) -> Result<Vec<u8>> {
@@ -111,25 +124,39 @@ fn open(index: &str) -> Result<(Box<dyn ObjectStore>, StorePath)> {
     Ok(object_store::parse_url_opts(&url, options)?)
 }
 
+/// The index's directory, without credentials, query or fragment, when
+/// it's an HTTP(S) URL.
 fn default_bases(index: &str) -> Vec<String> {
-    let http = index.starts_with("https://") || index.starts_with("http://");
+    let Ok(mut url) = url::Url::parse(index) else {
+        return Vec::new();
+    };
 
-    match index.rsplit_once('/') {
-        Some((dir, _)) if http => vec![format!("{dir}/")],
-        _ => Vec::new(),
+    if !matches!(url.scheme(), "http" | "https") {
+        return Vec::new();
+    }
+
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+
+    match url.as_str().rsplit_once('/') {
+        Some((dir, _)) => vec![format!("{dir}/")],
+        None => Vec::new(),
     }
 }
 
 async fn reload(store: &dyn ObjectStore, path: &StorePath, index: &StaticIndex, url: &str) {
     let bytes = match store.get(path).await {
-        Ok(result) => result.bytes().await,
-        Err(e) => Err(e),
+        Ok(result) if result.meta.size > MAX_ENVELOPE_LEN => Err(format!(
+            "{} bytes is too large for an index",
+            result.meta.size
+        )),
+        Ok(result) => result.bytes().await.map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
     };
 
-    match bytes
-        .map_err(|e| e.to_string())
-        .and_then(|b| index.replace(&b).map_err(|e| e.to_string()))
-    {
+    match bytes.and_then(|b| index.replace(&b).map_err(|e| e.to_string())) {
         Ok(Replaced::Loaded { serial }) => {
             eprintln!("loaded index serial {serial}");
             metrics::gauge!("omaha_index_serial").set(serial as f64);
@@ -183,18 +210,19 @@ fn install_metrics(addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn serve(
-    index: String,
-    trust: Vec<PathBuf>,
-    base: Vec<String>,
-    cup_key: Vec<String>,
-    listen: SocketAddr,
-    reload_secs: u64,
-    server_name: Option<String>,
-    metrics_addr: Option<SocketAddr>,
-    count_activity: bool,
-) -> Result<()> {
+async fn serve(args: ServeArgs) -> Result<()> {
+    let ServeArgs {
+        index,
+        trust,
+        base,
+        cup_key,
+        listen,
+        max_connections,
+        reload: reload_secs,
+        server_name,
+        metrics: metrics_addr,
+        count_activity,
+    } = args;
     let bases = if base.is_empty() {
         default_bases(&index)
     } else {
@@ -248,22 +276,35 @@ async fn serve(
     let stop = shutdown();
     tokio::pin!(stop);
 
+    let slots = Arc::new(Semaphore::new(max_connections.max(1)));
+
     loop {
-        let (stream, _) = tokio::select! {
-            accepted = listener.accept() => match accepted {
-                Ok(accepted) => accepted,
-                Err(e) => {
-                    eprintln!("accept: {e}");
-                    continue;
+        let (permit, accepted) = tokio::select! {
+            permit = slots.clone().acquire_owned() => {
+                let permit = permit?;
+                tokio::select! {
+                    accepted = listener.accept() => (permit, accepted),
+                    _ = &mut stop => return Ok(()),
                 }
-            },
+            }
             _ = &mut stop => return Ok(()),
+        };
+        let stream = match accepted {
+            Ok((stream, _)) => stream,
+            Err(e) => {
+                eprintln!("accept: {e}");
+                tokio::time::sleep(ACCEPT_BACKOFF).await;
+                continue;
+            }
         };
         let service = TowerToHyperService::new(endpoint.clone());
         tokio::spawn(async move {
-            let _ = http1::Builder::new()
-                .serve_connection(TokioIo::new(stream), service)
-                .await;
+            let connection = http1::Builder::new()
+                .timer(TokioTimer::new())
+                .header_read_timeout(HEADER_TIMEOUT)
+                .serve_connection(TokioIo::new(stream), service);
+            let _ = tokio::time::timeout(CONNECTION_TIMEOUT, connection).await;
+            drop(permit);
         });
     }
 }
@@ -271,30 +312,7 @@ async fn serve(
 #[tokio::main]
 async fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Command::Serve {
-            index,
-            trust,
-            base,
-            cup_key,
-            listen,
-            reload,
-            server_name,
-            metrics,
-            count_activity,
-        } => {
-            serve(
-                index,
-                trust,
-                base,
-                cup_key,
-                listen,
-                reload,
-                server_name,
-                metrics,
-                count_activity,
-            )
-            .await
-        }
+        Command::Serve(args) => serve(args).await,
     };
 
     match result {
@@ -315,6 +333,10 @@ mod tests {
         assert_eq!(
             default_bases("https://crls.example/feed/standard/index.json"),
             ["https://crls.example/feed/standard/"]
+        );
+        assert_eq!(
+            default_bases("https://user:token@crls.example/feed/index.json?sig=a/b#x"),
+            ["https://crls.example/feed/"]
         );
         assert!(default_bases("s3://bucket/feed/index.json").is_empty());
         assert!(default_bases("file:///srv/feed/index.json").is_empty());

@@ -9,6 +9,9 @@ repository.workspace = true
 keywords.workspace = true
 categories = ["web-programming::http-server"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 omaha-protocol.workspace = true
 cup2.workspace = true

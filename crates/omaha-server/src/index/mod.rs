@@ -54,6 +54,9 @@ pub const FORMAT: u32 = 1;
 /// The DSSE payload type of an index.
 pub const PAYLOAD_TYPE: &str = "application/vnd.omaha.index+json";
 
+/// The largest signed index this crate reads, in bytes.
+pub const MAX_ENVELOPE_LEN: u64 = 16 << 20;
+
 const MAX_PATH_LEN: usize = 1024;
 
 /// A list of releases per app: the document inside the signed envelope.

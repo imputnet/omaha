@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 omaha-protocol.workspace = true
 omaha-server.workspace = true
@@ -18,7 +21,7 @@ flate2.workspace = true
 object_store.workspace = true
 sha2.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json_lenient.workspace = true
 clap = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
 pem-rfc7468 = { workspace = true, optional = true }

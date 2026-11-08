@@ -26,10 +26,11 @@
 //!
 //! The last two are counted with the `activity` feature, once
 //! [`EndpointBuilder::count_activity`](crate::EndpointBuilder::count_activity)
-//! is on: an update check is a roll call, and an active report, the first
-//! time an install makes one each server day, judged by the date it last
-//! got from the server. Their daily increase is the number of installs that
-//! checked, or were used, that day.
+//! is on: an update check is a roll call, and an active report if the app
+//! was used, the first time an install makes one each server day, judged by
+//! the date or day count it sends. Their daily increase is the number of
+//! installs that checked, or were used, that day. Only Omaha 4 checks are
+//! counted: Chromium sends update2 pings to Google's update URLs only.
 
 #[cfg(feature = "metrics")]
 mod enabled {
@@ -150,13 +151,11 @@ mod enabled {
 
     #[cfg(feature = "activity")]
     pub(crate) fn activity(app: &str, ping: &omaha_protocol::Ping, today: u32) {
-        use omaha_protocol::PingDay;
-
         if ping.roll_call.is_before(today) {
             metrics::counter!("omaha_roll_calls_total", "app" => app.to_owned()).increment(1);
         }
 
-        if ping.active != PingDay::Unknown && ping.active.is_before(today) {
+        if ping.active.is_some_and(|day| day.is_before(today)) {
             metrics::counter!("omaha_active_reports_total", "app" => app.to_owned()).increment(1);
         }
     }

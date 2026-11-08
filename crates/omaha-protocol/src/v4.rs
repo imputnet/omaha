@@ -100,24 +100,44 @@ struct WirePing {
     #[serde(default)]
     rd: Option<Value>,
     #[serde(default)]
+    r: Option<Value>,
+    #[serde(default)]
     ad: Option<Value>,
+    #[serde(default)]
+    a: Option<Value>,
 }
 
 #[cfg(feature = "activity")]
-fn ping_day(value: Option<Value>) -> PingDay {
-    match value.as_ref().and_then(Value::as_i64) {
-        Some(-1) => PingDay::First,
-        Some(day) => u32::try_from(day).map_or(PingDay::Unknown, PingDay::Day),
-        None => PingDay::Unknown,
-    }
+fn ping_number(value: &Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
 }
 
-fn ping_value(day: PingDay) -> Value {
-    match day {
-        PingDay::Unknown => (-2).into(),
-        PingDay::First => (-1).into(),
-        PingDay::Day(day) => day.into(),
-    }
+/// A date (`rd`/`ad`), else a count of days (`r`/`a`), if either is there.
+#[cfg(feature = "activity")]
+fn ping_day(date: Option<Value>, days: Option<Value>) -> Option<PingDay> {
+    let (value, day): (Value, fn(u32) -> PingDay) = match (date, days) {
+        (Some(date), _) => (date, PingDay::Day),
+        (None, Some(days)) => (days, PingDay::DaysAgo),
+        (None, None) => return None,
+    };
+
+    Some(match ping_number(&value) {
+        Some(-1) => PingDay::First,
+        Some(n) => u32::try_from(n).map_or(PingDay::Unknown, day),
+        None => PingDay::Unknown,
+    })
+}
+
+fn ping_member(m: &mut Map<String, Value>, date: &str, days: &str, day: PingDay) {
+    let (key, value): (&str, Value) = match day {
+        PingDay::Unknown => (date, (-2).into()),
+        PingDay::First => (date, (-1).into()),
+        PingDay::Day(d) => (date, d.into()),
+        PingDay::DaysAgo(n) => (days, n.into()),
+    };
+    m.insert(key.into(), value);
 }
 
 #[derive(Deserialize)]
@@ -425,8 +445,8 @@ fn decode_app(a: WireApp, limits: &Limits) -> Result<App, DecodeError> {
             .collect::<Result<_, _>>()?,
         #[cfg(feature = "activity")]
         ping: a.ping.map(|p| Ping {
-            roll_call: ping_day(p.rd),
-            active: ping_day(p.ad),
+            roll_call: ping_day(p.rd, p.r).unwrap_or_default(),
+            active: ping_day(p.ad, p.a),
         }),
         #[cfg(not(feature = "activity"))]
         ping: None,
@@ -804,10 +824,14 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Result<Vec
             }
 
             if let Some(ping) = &a.ping {
-                am.insert(
-                    "ping".into(),
-                    json!({ "rd": ping_value(ping.roll_call), "ad": ping_value(ping.active) }),
-                );
+                let mut pm = Map::new();
+                ping_member(&mut pm, "rd", "r", ping.roll_call);
+
+                if let Some(active) = ping.active {
+                    ping_member(&mut pm, "ad", "a", active);
+                }
+
+                am.insert("ping".into(), Value::Object(pm));
             }
 
             if !a.cached.is_empty() {

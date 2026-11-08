@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["protocol"]
 protocol = ["dep:omaha-protocol"]

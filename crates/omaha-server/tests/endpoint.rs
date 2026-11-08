@@ -405,6 +405,10 @@ async fn sends_retry_after() {
         .build();
     let response = call(&mut endpoint, post("/", &check(&[A]))).await;
     assert_eq!(response.headers()["x-retry-after"], "86400");
+
+    let refused = call(&mut endpoint, post("/", &"x".repeat(2 << 20))).await;
+    assert_eq!(refused.status(), 413);
+    assert_eq!(refused.headers()["x-retry-after"], "86400");
 }
 
 #[tokio::test]

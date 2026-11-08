@@ -34,8 +34,11 @@ fn unmet(requires: &Requirements, client: &Client) -> Option<Unmet> {
 }
 
 /// Whether `version` starts with the components of `prefix`, read as a
-/// dotted tuple: `1.2.3` matches `1.2.3.4` but not `1.2.34`.
+/// dotted tuple: `1.2.3` matches `1.2.3.4` but not `1.2.34`. A trailing dot,
+/// as in Chromium's `55.` policy values, changes nothing.
 fn matches_prefix(version: &Version, prefix: &str) -> bool {
+    let prefix = prefix.strip_suffix('.').unwrap_or(prefix);
+
     if prefix.is_empty() {
         return true;
     }
@@ -87,24 +90,27 @@ impl Index {
         }
 
         let prefix = check.targetversionprefix.as_deref().unwrap_or_default();
-        let candidates = releases
-            .iter()
-            .filter(|r| matches_prefix(&r.version, prefix));
         let mut best: Option<&Release> = None;
-        let mut closest = None;
+        let mut os_supported = false;
+        let mut hw_supported = false;
 
-        for release in candidates {
-            match unmet(&release.requires, client) {
-                None if best.is_none_or(|b| release.version > b.version) => best = Some(release),
-                None => {}
-                Some(reason) => closest = closest.max(Some(reason)),
+        for release in releases {
+            let reason = unmet(&release.requires, client);
+            os_supported |= reason != Some(Unmet::Os);
+            hw_supported |= !matches!(reason, Some(Unmet::Os | Unmet::Arch));
+
+            if reason.is_none()
+                && matches_prefix(&release.version, prefix)
+                && best.is_none_or(|b| release.version > b.version)
+            {
+                best = Some(release);
             }
         }
 
         let Some(release) = best else {
-            let outcome = match closest {
-                Some(Unmet::Os) => Outcome::Error(UpdateCheckError::OsNotSupported),
-                Some(Unmet::Arch) => Outcome::Error(UpdateCheckError::HwNotSupported),
+            let outcome = match (releases.is_empty(), os_supported, hw_supported) {
+                (false, false, _) => Outcome::Error(UpdateCheckError::OsNotSupported),
+                (false, true, false) => Outcome::Error(UpdateCheckError::HwNotSupported),
                 _ => Outcome::NoUpdate,
             };
             return with_outcome(answer, outcome);
@@ -221,6 +227,10 @@ mod tests {
         assert!(!matches_prefix(&v, "1.2.34"));
         assert!(!matches_prefix(&v, "1.3"));
         assert!(!matches_prefix(&v, "1..2"));
+        assert!(matches_prefix(&v, "1."));
+        assert!(matches_prefix(&v, "1.2.3."));
+        assert!(!matches_prefix(&v, "1.3."));
+        assert!(!matches_prefix(&v, "1.2.."));
         assert!(matches_prefix(&"1.2".parse().unwrap(), "1.2.0"));
     }
 }

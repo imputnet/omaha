@@ -6,7 +6,8 @@ git_release_name = "{{ package }}-v{{ version }}"
 
 [changelog]
 commit_parsers = [
-    { message = "^release", skip = true },
+    { message = "^[^:]+: release", skip = true },
+    { message = "^[^:]+: reformat", skip = true },
     { message = "^.*: add", group = "Added" },
     { message = "^.*: support", group = "Added" },
     { message = "^.*: remove", group = "Removed" },

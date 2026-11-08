@@ -66,18 +66,22 @@ impl Source for Store {
 }
 
 fn request() -> Bytes {
-    let app = |id: &str, version: &str, rd: i64, ad: i64| {
+    let app = |id: &str, version: &str, ping: String| {
         format!(
-            r#"{{"appid":"{id}","version":"{version}","updatecheck":{{}},"ping":{{"rd":{rd},"ad":{ad},"ping_freshness":"{{00000000-0000-4000-8000-000000000000}}"}}}}"#
+            r#"{{"appid":"{id}","version":"{version}","updatecheck":{{}},"ping":{{{ping},"ping_freshness":"{{00000000-0000-4000-8000-000000000000}}"}}}}"#
         )
     };
     let pingback = format!(
         r#"{{"appid":"{STRANGER}","version":"9.8.7.6","events":[{{"eventtype":3,"eventresult":1}},{{"eventtype":14,"eventresult":0,"errorcode":5}}]}}"#
     );
     let apps = [
-        app(ROUTED, "1.2.3.4", i64::from(TODAY) - 1, -2),
-        app(VOUCHED, "5.6.7.8", i64::from(TODAY), i64::from(TODAY) - 3),
-        app(STRANGER, "31.33.7.1", -1, -1),
+        app(ROUTED, "1.2.3.4", format!(r#""rd":{}"#, TODAY - 1)),
+        app(
+            VOUCHED,
+            "5.6.7.8",
+            format!(r#""rd":{TODAY},"ad":{}"#, TODAY - 3),
+        ),
+        app(STRANGER, "31.33.7.1", r#""r":-1,"a":2"#.into()),
         pingback,
     ];
     Bytes::from(format!(

@@ -91,6 +91,12 @@ fn reads_candidates() {
             .id
     );
 
+    let lenient = "\u{feff}{\n  // made by hand\n  \"name\": \"a\\x41\", /* note */\n  \"version\": \"4.5\"\n}";
+    let zip =
+        archive::archive([("manifest.json", lenient.as_bytes())], Compression::Stored).unwrap();
+    let crx_file = crx3::Builder::new().signer(&signer).build(&zip).unwrap();
+    assert_eq!(Candidate::new(crx_file).unwrap().version.to_string(), "4.5");
+
     let zip = archive::archive([("data", &b"x"[..])], Compression::Stored).unwrap();
     let no_manifest = crx3::Builder::new().signer(&signer).build(&zip).unwrap();
     assert!(matches!(
@@ -313,8 +319,32 @@ async fn publishes_to_a_store() {
     }
 
     let later = now() + Duration::from_secs(30 * 86400);
+    assert!(matches!(
+        store
+            .refresh(&[&index_key], &[&trusted], &policy, later)
+            .await,
+        Err(StoreError::Expired { .. })
+    ));
+    assert!(matches!(
+        store
+            .publish(
+                crx(&crx_key, "3", &data),
+                Options::default(),
+                &[&index_key],
+                &[&trusted],
+                &differs,
+                &policy,
+                later
+            )
+            .await,
+        Err(StoreError::Expired { .. })
+    ));
+    let accepting = Policy {
+        accept_expired: true,
+        ..Policy::default()
+    };
     let refreshed = store
-        .refresh(&[&index_key], &[&trusted], &policy, later)
+        .refresh(&[&index_key], &[&trusted], &accepting, later)
         .await
         .unwrap();
     assert_eq!(refreshed.serial, 3);
@@ -337,6 +367,11 @@ async fn publishes_to_a_store() {
         .put(&crx_path, PutPayload::from(b"replaced".to_vec()))
         .await
         .unwrap();
+    let crx_file = &served.apps[&appid][0].crx;
+    assert!(matches!(
+        store.fetch(crx_file).await,
+        Err(StoreError::Release(ReleaseError::SourceMismatch(_)))
+    ));
     assert!(matches!(
         store.upload(&plan.uploads[0]).await,
         Err(StoreError::Conflict(_))
@@ -348,4 +383,44 @@ async fn publishes_to_a_store() {
         store.current(&[&stranger_key]).await,
         Err(StoreError::Index(_))
     ));
+}
+
+#[test]
+fn keeps_the_last_release_every_client_can_install() {
+    let signer = crx3::aws_lc::EcdsaSigner::generate().unwrap();
+    let policy = Policy {
+        keep: 2,
+        ..Policy::default()
+    };
+    let mac_only = || Options {
+        requires: omaha_server::index::Requirements {
+            os: vec!["mac".into()],
+            ..Default::default()
+        },
+        ..Options::default()
+    };
+    let mut index: Option<Index> = None;
+
+    for (version, options) in [
+        ("1", Options::default()),
+        ("2", mac_only()),
+        ("3", mac_only()),
+        ("4", mac_only()),
+    ] {
+        let candidate = Candidate::new(crx(&signer, version, version.as_bytes())).unwrap();
+        let plan =
+            release::add(index.as_ref(), candidate, options, &[], &[], &policy, now()).unwrap();
+        index = Some(plan.index);
+    }
+
+    let index = index.unwrap();
+    let versions: Vec<String> = index
+        .apps
+        .values()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|r| r.version.to_string())
+        .collect();
+    assert_eq!(versions, ["4", "1"], "1 is the only one for non-macs");
 }

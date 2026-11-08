@@ -3,7 +3,9 @@ use std::fmt;
 /// Bounds applied while decoding untrusted requests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
-    /// Largest request body or update2 query string, in bytes. Default: 1 MiB.
+    /// Largest request body or update2 query string, in bytes. Decoding can
+    /// take several times this much memory. Default: 256 KiB, about three
+    /// times what a browser sends for 256 apps.
     pub max_body_len: usize,
     /// Most apps in one request. Default: 256.
     pub max_apps: usize,
@@ -17,7 +19,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Limits {
-            max_body_len: 1 << 20,
+            max_body_len: 256 << 10,
             max_apps: 256,
             max_string_len: 1024,
             max_list_len: 64,

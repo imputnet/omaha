@@ -4,6 +4,7 @@
 use omaha_diff::{DiffError, Differ, Format};
 use omaha_protocol::{AppId, AttributeName, Sha256, Version};
 use omaha_server::index::{File, Index, IndexError, Patch, PatchFormat, Release, Requirements};
+use serde::Deserialize;
 use sha2::Digest;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -15,7 +16,8 @@ const MAX_MANIFEST_LEN: u64 = 1 << 20;
 /// How releases are kept and patched.
 #[derive(Clone, Debug)]
 pub struct Policy {
-    /// Releases kept per app, including the new one.
+    /// Releases kept per app, including the new one. The newest release for
+    /// each distinct set of requirements is kept beyond this.
     pub keep: usize,
     /// How many of the newest earlier releases to make patches from.
     pub patch_from: usize,
@@ -23,6 +25,10 @@ pub struct Policy {
     pub max_patch_ratio: f64,
     /// How long a published index stays valid.
     pub lifetime: Duration,
+    /// Build on the stored index even if it has expired. Off by default,
+    /// since an expired index in the store can be an old one put back by
+    /// someone with write access, which publishing would sign anew.
+    pub accept_expired: bool,
 }
 
 impl Default for Policy {
@@ -32,6 +38,7 @@ impl Default for Policy {
             patch_from: 3,
             max_patch_ratio: 0.8,
             lifetime: Duration::from_secs(14 * 86400),
+            accept_expired: false,
         }
     }
 }
@@ -120,7 +127,15 @@ fn manifest_version(archive: &[u8]) -> Result<Version, ReleaseError> {
         version: String,
     }
 
-    let manifest: Manifest = serde_json::from_slice(&json).map_err(|e| err(&e))?;
+    // Chromium reads manifests with JSON_PARSE_CHROMIUM_EXTENSIONS: comments,
+    // `\x` escapes and newlines in strings, after an optional UTF-8 BOM.
+    let json = json.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&json);
+    let mut de = serde_json_lenient::Deserializer::from_slice_with_options(
+        json, false, true, false, false, true,
+    );
+    de.set_allow_comments(true);
+    let manifest = Manifest::deserialize(&mut de).map_err(|e| err(&e))?;
+    de.end().map_err(|e| err(&e))?;
     manifest
         .version
         .parse()
@@ -222,9 +237,10 @@ pub fn patch_sources(
 /// [`patch_sources`] named, with their contents) made by each of
 /// `differs`.
 ///
-/// The new release is always kept; of the others, the newest
-/// `policy.keep - 1` stay. Files of dropped releases are not deleted, since
-/// clients may still be downloading them.
+/// The new release is always kept, as is the newest release for each
+/// distinct set of requirements, so no client loses the last release it can
+/// install. The newest others fill up to `policy.keep`. Files of dropped
+/// releases are not deleted, since clients may still be downloading them.
 pub fn add(
     previous: Option<&Index>,
     candidate: Candidate,
@@ -280,12 +296,28 @@ pub fn add(
         uploads.push(Upload { path, bytes });
     }
 
-    releases.sort_by(|a, b| b.version.cmp(&a.version));
-    releases.truncate(policy.keep.saturating_sub(1));
-    releases.insert(0, release);
-    releases.sort_by(|a, b| b.version.cmp(&a.version));
+    retain(releases, release, policy.keep);
     index.check().map_err(ReleaseError::Index)?;
     Ok(Plan { index, uploads })
+}
+
+fn retain(releases: &mut Vec<Release>, new: Release, keep: usize) {
+    releases.sort_by(|a, b| b.version.cmp(&a.version));
+    let mut kept = vec![new];
+    let mut others = Vec::new();
+
+    for release in releases.drain(..) {
+        if kept.iter().any(|k| k.requires == release.requires) {
+            others.push(release);
+        } else {
+            kept.push(release);
+        }
+    }
+
+    let room = keep.saturating_sub(kept.len());
+    kept.extend(others.into_iter().take(room));
+    kept.sort_by(|a, b| b.version.cmp(&a.version));
+    *releases = kept;
 }
 
 /// Every patch under the size limit, smallest first.

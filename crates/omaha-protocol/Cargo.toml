@@ -10,6 +10,9 @@ keywords.workspace = true
 categories = ["parser-implementations", "encoding"]
 exclude = ["tests/chromium.rs"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

@@ -339,6 +339,18 @@ fn reports_unsupported_systems() {
         )),
         &Outcome::NoUpdate
     );
+
+    let mut win = release("2", 2);
+    win.requires.os = vec!["win".into()];
+    let mut linux = release("1", 1);
+    linux.requires.os = vec!["linux".into()];
+    let mut pinned = app(None);
+    pinned.updatecheck.as_mut().unwrap().targetversionprefix = Some("2".into());
+    assert_eq!(
+        outcome(&answer(&index(vec![win, linux]), &client(), &pinned)),
+        &Outcome::NoUpdate,
+        "the OS is supported, just not by the pinned version"
+    );
 }
 
 #[test]
@@ -456,4 +468,13 @@ fn passes_attributes_and_handles_odd_apps() {
             .updatecheck
             .is_none()
     );
+}
+
+#[test]
+fn refuses_oversized_envelopes() {
+    let huge = vec![b' '; (16 << 20) + 1];
+    assert!(matches!(
+        Index::verify(&huge, &[]),
+        Err(OpenError::Envelope(e)) if e.contains("16 MiB")
+    ));
 }

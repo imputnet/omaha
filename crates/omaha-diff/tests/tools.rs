@@ -105,3 +105,24 @@ fn rejects_patches_that_do_not_reproduce_the_target() {
         Err(DiffError::Mismatch)
     ));
 }
+
+#[cfg(unix)]
+#[test]
+fn kills_tools_that_run_too_long() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let tool = dir.path().join("puffin");
+    std::fs::write(&tool, "#!/bin/sh\nexec /bin/sleep 30\n").unwrap();
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let started = std::time::Instant::now();
+    let result = Differ::puffin(&tool)
+        .timeout(std::time::Duration::from_millis(200))
+        .diff(b"old", b"new");
+    assert!(
+        matches!(result, Err(DiffError::TimedOut { step: "make" })),
+        "{result:?}"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}

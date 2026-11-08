@@ -249,3 +249,37 @@ fn exports_prometheus_metrics() {
         assert!(scraped.contains(&line), "missing {line} in:\n{scraped}");
     }
 }
+
+#[test]
+fn idle_connections_time_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = EcdsaSigner::generate().unwrap();
+    let trust = dir.path().join("index.pub");
+    std::fs::write(&trust, pem("PUBLIC KEY", key.public_key())).unwrap();
+    write_index(dir.path(), &key, 1, "2");
+    let server = start(&[
+        format!("--index=file://{}/index.json", dir.path().display()),
+        format!("--trust={}", trust.display()),
+        "--base=https://dl.example/".into(),
+        "--max-connections=2".into(),
+    ]);
+
+    let idle: Vec<TcpStream> = (0..2)
+        .map(|_| TcpStream::connect(&server.addr).unwrap())
+        .collect();
+    let started = std::time::Instant::now();
+    let (head, body) = post(&server.addr, "/", &check_request());
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    assert_eq!(offered(&body).0, "2");
+    assert!(
+        started.elapsed() >= Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(30),
+        "{:?}",
+        started.elapsed()
+    );
+    drop(idle);
+}

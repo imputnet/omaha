@@ -15,8 +15,8 @@
 //!   `sha256_with_ecdsa`, but every key it pins or generates is P-256.
 //! - Protobuf groups in the header are rejected rather than skipped. The
 //!   header format has none, so only crafted files contain them.
-//! - Headers larger than [`MAX_HEADER_LEN`] are rejected, to bound memory
-//!   use before any signature is checked.
+//! - Headers larger than [`MAX_HEADER_LEN`] or with more than 64 proofs are
+//!   rejected, to bound memory use before any signature is checked.
 //!
 //! - Keys must be canonical DER SubjectPublicKeyInfo. Chromium also accepts
 //!   non-canonical but valid encodings, such as compressed EC points.

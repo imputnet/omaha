@@ -250,6 +250,13 @@ impl Endpoint {
             }
         };
 
+        self.finish(&mut response, protocol, start);
+        response
+    }
+
+    /// What every answer gets, including ones refused before decoding: an
+    /// `X-Retry-After` when asked for, and a count in the metrics.
+    fn finish(&self, response: &mut http::Response<Bytes>, protocol: &'static str, start: Instant) {
         if let Some(after) = self.inner.retry_after.as_ref().and_then(|f| f()) {
             let secs = after.as_secs().clamp(1, MAX_RETRY_AFTER_SECS);
             response
@@ -258,7 +265,6 @@ impl Endpoint {
         }
 
         metrics::request(protocol, response.status().as_u16(), start.elapsed());
-        response
     }
 
     async fn handle_v4(&self, request: &http::Request<Bytes>) -> http::Response<Bytes> {
@@ -515,24 +521,21 @@ where
     fn call(&mut self, request: http::Request<B>) -> Self::Future {
         let endpoint = self.clone();
         Box::pin(async move {
+            let start = Instant::now();
             let (parts, body) = request.into_parts();
             let limit = endpoint.inner.limits.max_body_len;
-            let response = match Limited::new(body, limit).collect().await {
+            let mut refused = match Limited::new(body, limit).collect().await {
                 Ok(collected) => {
                     let request = http::Request::from_parts(parts, collected.to_bytes());
-                    endpoint.handle(request).await
+                    return Ok(endpoint.handle(request).await.map(Full::new));
                 }
                 Err(e) if e.downcast_ref::<LengthLimitError>().is_some() => {
-                    metrics::request(
-                        protocol_label(&parts.method),
-                        StatusCode::PAYLOAD_TOO_LARGE.as_u16(),
-                        Duration::ZERO,
-                    );
                     decode_error(&DecodeError::TooLarge)
                 }
                 Err(_) => text(StatusCode::BAD_REQUEST, "unreadable request body"),
             };
-            Ok(response.map(Full::new))
+            endpoint.finish(&mut refused, protocol_label(&parts.method), start);
+            Ok(refused.map(Full::new))
         })
     }
 }

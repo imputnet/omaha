@@ -152,29 +152,30 @@ pub struct App {
     pub ping: Option<Ping>,
 }
 
-/// The dates an app last counted towards the server's user counts, as the
-/// server gave them to the client. Enough to count each install once a day
-/// without identifying it.
+/// When an app last counted towards the server's user counts. Enough to
+/// count each install once a day without identifying it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Ping {
-    /// `rd`: the previous roll call, which every update check is.
+    /// `rd` or `r`: the previous roll call, which every update check is.
     pub roll_call: PingDay,
-    /// `ad`: the previous active report. This request is an active report
-    /// unless it is [`PingDay::Unknown`].
-    pub active: PingDay,
+    /// `ad` or `a`: the previous active report, present only when the app
+    /// was used since, which makes this request an active report.
+    pub active: Option<PingDay>,
 }
 
-/// A date in a [`Ping`].
+/// When a [`Ping`] was last sent.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PingDay {
-    /// `-2` or absent: not known, or for `ad`, not active since the last
-    /// active report.
+    /// `-2` or absent: not known.
     #[default]
     Unknown,
-    /// `-1`: there was none before.
+    /// `-1`: never before.
     First,
-    /// A server date, in days since 2007-01-01 (`daystart.elapsed_days`).
+    /// `rd`/`ad`: a server date, in days since 2007-01-01
+    /// (`daystart.elapsed_days`).
     Day(u32),
+    /// `r`/`a`: days ago, which clients send when they have no server date.
+    DaysAgo(u32),
 }
 
 impl PingDay {
@@ -182,6 +183,7 @@ impl PingDay {
     pub fn is_before(self, today: u32) -> bool {
         match self {
             PingDay::Day(day) => day < today,
+            PingDay::DaysAgo(days) => days > 0,
             PingDay::First | PingDay::Unknown => true,
         }
     }

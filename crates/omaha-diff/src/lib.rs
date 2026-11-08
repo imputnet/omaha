@@ -11,8 +11,14 @@
 struct ReadmeDoctests;
 
 use std::fmt;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
+const MAX_STDERR: u64 = 64 << 10;
+const POLL: Duration = Duration::from_millis(20);
 
 /// Patch formats Chromium's update client can apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -53,6 +59,11 @@ pub enum DiffError {
     },
     /// Applying the patch didn't give back the target.
     Mismatch,
+    /// The tool ran longer than [`Differ::timeout`] allows and was killed.
+    TimedOut {
+        /// `"make"` or `"apply"`, as for [`DiffError::Failed`].
+        step: &'static str,
+    },
 }
 
 impl fmt::Display for DiffError {
@@ -65,6 +76,7 @@ impl fmt::Display for DiffError {
                 stderr,
             } => write!(f, "diff: {step} failed ({status}): {stderr}"),
             DiffError::Mismatch => f.write_str("diff: the patch doesn't reproduce the target"),
+            DiffError::TimedOut { step } => write!(f, "diff: {step} timed out"),
         }
     }
 }
@@ -89,6 +101,7 @@ impl From<std::io::Error> for DiffError {
 pub struct Differ {
     format: Format,
     binary: PathBuf,
+    timeout: Duration,
 }
 
 impl Differ {
@@ -97,6 +110,7 @@ impl Differ {
         Differ {
             format: Format::Puffin,
             binary: binary.into(),
+            timeout: DEFAULT_TIMEOUT,
         }
     }
 
@@ -105,7 +119,15 @@ impl Differ {
         Differ {
             format: Format::Zucchini,
             binary: binary.into(),
+            timeout: DEFAULT_TIMEOUT,
         }
+    }
+
+    /// How long each run of the tool may take before it's killed. Default:
+    /// 10 minutes.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// The patch format this differ makes, set by [`Differ::puffin`] or
@@ -117,6 +139,7 @@ impl Differ {
     /// A patch turning the CRX `from` into the CRX `to`, checked by applying
     /// it.
     pub fn diff(&self, from: &[u8], to: &[u8]) -> Result<Vec<u8>, DiffError> {
+        let binary = resolve(&self.binary)?;
         let dir = tempfile::tempdir()?;
         let old = dir.path().join("old.crx3");
         let new = dir.path().join("new.crx3");
@@ -136,8 +159,8 @@ impl Differ {
                 [Path::new("-apply"), old, patch, check],
             ),
         };
-        self.run("make", &make, dir.path())?;
-        self.run("apply", &apply, dir.path())?;
+        self.run(&binary, "make", &make, dir.path())?;
+        self.run(&binary, "apply", &apply, dir.path())?;
 
         if std::fs::read(check)? != to {
             return Err(DiffError::Mismatch);
@@ -146,12 +169,46 @@ impl Differ {
         Ok(std::fs::read(patch)?)
     }
 
-    fn run(&self, step: &'static str, args: &[&Path], dir: &Path) -> Result<(), DiffError> {
-        let Output { status, stderr, .. } = Command::new(&self.binary)
+    fn run(
+        &self,
+        binary: &Path,
+        step: &'static str,
+        args: &[&Path],
+        dir: &Path,
+    ) -> Result<(), DiffError> {
+        let mut child = Command::new(binary)
             .args(args)
             .current_dir(dir)
             .env_clear()
-            .output()?;
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let stderr = child.stderr.take().map(|pipe| {
+            std::thread::spawn(move || {
+                let mut text = Vec::new();
+                let _ = pipe.take(MAX_STDERR).read_to_end(&mut text);
+                text
+            })
+        });
+        let deadline = Instant::now() + self.timeout;
+
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(DiffError::TimedOut { step });
+            }
+
+            std::thread::sleep(POLL);
+        };
+        let stderr = stderr
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default();
 
         if status.success() {
             return Ok(());
@@ -165,6 +222,32 @@ impl Differ {
     }
 }
 
+/// The tool's path as it must be given to a process running elsewhere: a
+/// relative path is taken from the current directory, and a bare name is
+/// looked up in `PATH`, since the tool runs in a temporary directory with an
+/// empty environment.
+fn resolve(binary: &Path) -> std::io::Result<PathBuf> {
+    if binary.is_absolute() {
+        return Ok(binary.to_path_buf());
+    }
+
+    if binary.components().count() > 1 {
+        return Ok(std::env::current_dir()?.join(binary));
+    }
+
+    std::env::var_os("PATH")
+        .iter()
+        .flat_map(std::env::split_paths)
+        .map(|dir| dir.join(binary))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{} not found in PATH", binary.display()),
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +256,21 @@ mod tests {
     fn operation_types() {
         assert_eq!(Format::Puffin.operation_type(), "puff");
         assert_eq!(Format::Zucchini.operation_type(), "zucc");
+    }
+
+    #[test]
+    fn resolves_tool_paths() {
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(
+            resolve(Path::new("/opt/puffin")).unwrap(),
+            Path::new("/opt/puffin")
+        );
+        assert_eq!(
+            resolve(Path::new("out/puffin")).unwrap(),
+            here.join("out/puffin")
+        );
+        assert!(resolve(Path::new("sh")).unwrap().is_absolute());
+        assert!(resolve(Path::new("no-such-tool-here")).is_err());
     }
 
     #[test]

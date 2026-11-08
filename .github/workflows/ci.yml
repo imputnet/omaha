@@ -84,3 +84,16 @@ jobs:
         env:
           CHROME_CHANNEL: ${{ matrix.channel }}
         run: .github/scripts/conformance.sh
+
+  fuzz:
+    name: fuzz
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: fuzz every target
+        run: .github/scripts/fuzz.sh

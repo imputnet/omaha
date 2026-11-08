@@ -1,4 +1,4 @@
-use super::{Index, IndexError, PAYLOAD_TYPE};
+use super::{Index, IndexError, MAX_ENVELOPE_LEN, PAYLOAD_TYPE};
 use base64::Engine;
 use base64::alphabet;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
@@ -218,6 +218,10 @@ impl Index {
     /// not its expiry. For a publisher building the next index on top of
     /// one that may have expired; a server should use `open`.
     pub fn verify(envelope: &[u8], trusted: &[&dyn Verifier]) -> Result<Index, OpenError> {
+        if envelope.len() as u64 > MAX_ENVELOPE_LEN {
+            return Err(OpenError::Envelope("larger than 16 MiB".into()));
+        }
+
         let envelope: Envelope =
             serde_json::from_slice(envelope).map_err(|e| OpenError::Envelope(e.to_string()))?;
 
