@@ -1,6 +1,4 @@
-//! Cheap stand-in for fuzzing in plain `cargo test`: mutate valid CRX files
-//! and make sure parsing and verification never panic. The proper fuzz
-//! target lives in `fuzz/`.
+//! Mutated CRX files must never make parsing or verification panic.
 #![cfg(feature = "aws-lc")]
 
 use crx3::aws_lc::{EcdsaSigner, RsaSigner};
@@ -39,7 +37,6 @@ fn mutated_files_never_panic() {
         .build()
         .unwrap();
     for original in [rsa, both, ecdsa] {
-        // Mutations in the header are the interesting ones.
         let hot = original.len() - archive.len() + 64;
         for _ in 0..4000 {
             let mut crx = original.clone();

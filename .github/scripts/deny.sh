@@ -1,6 +1,4 @@
 #!/bin/sh
-# Checks licenses, security advisories, banned crates and dependency sources
-# with cargo-deny, as configured in deny.toml.
 set -eu
 
 cd "$(dirname "$0")/../.."

@@ -7,7 +7,6 @@ on:
 permissions: {}
 
 jobs:
-  # Publishes crates whose release PR was just merged.
   release:
     name: release
     if: >-
@@ -17,11 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      # push tags and create GitHub releases
       contents: write
-      # find the release PR the commit came from
       pull-requests: read
-      # crates.io trusted publishing
       id-token: write
     steps:
       - name: checkout
@@ -40,13 +36,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Opens or updates the release PR with version bumps and changelogs.
   release-pr:
     name: release pr
     if: github.repository_owner == 'imputnet'
     runs-on: ubuntu-latest
-    # Writes go through the app token below, so CI runs on the release PR
-    # (GitHub doesn't trigger workflows from the default token's actions).
     permissions:
       contents: read
     concurrency:

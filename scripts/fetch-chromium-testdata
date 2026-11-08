@@ -1,13 +1,6 @@
 #!/bin/sh
-# Downloads Chromium test data used by the "chromium" integration tests into
-# testdata/chromium/<revision>/ (gitignored). The files are Chromium's, under its
-# BSD-style license, and are deliberately not part of this repository.
-#
-# Without the data those tests are skipped; set
-# OMAHA_REQUIRE_CHROMIUM_TESTDATA=1 to make them fail instead (as CI does).
 set -eu
 
-# Chromium src commit the tests are pinned to.
 REV=7ff956173add630906515187ce16a956f0d2074e
 FILES="
 components/client_update_protocol/cup_unittest.cc

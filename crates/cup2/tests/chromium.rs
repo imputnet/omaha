@@ -27,7 +27,6 @@ fn request_parameters_match_chromium() {
     assert_ne!(first, second, "nonces must differ");
     for query in [first, second] {
         assert!(query.starts_with(&key_prefix), "{query}");
-        // Chromium puts `&cup2hreq=` after the nonce; so do we.
         assert!(query.ends_with(&hash_suffix), "{query}");
         let nonce = &query[key_prefix.len()..query.len() - hash_suffix.len()];
         assert_eq!(nonce.len(), 43, "32 bytes, base64url, no padding: {nonce}");
@@ -44,7 +43,6 @@ fn signs_with_chromium_test_key() {
     let client = Client::new(KeyId::MlDsa44(16), signer.public_key()).unwrap();
     let server = Server::new().with(signer);
 
-    // Same flow and bodies as Chromium's SignResponse tests.
     let request = client.prepare(b"Request_A");
     let ticket = server
         .ticket(request.cup2key(), None, b"Request_A")

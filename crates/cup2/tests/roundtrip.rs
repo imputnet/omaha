@@ -52,14 +52,12 @@ fn rejects_tampering() {
         Err(VerifyError::EmptyResponse)
     );
 
-    // A response signed for another nonce doesn't verify.
     let other = client.prepare(REQUEST);
     assert_eq!(
         client.verify(&other, RESPONSE, proof.as_str()),
         Err(VerifyError::BadSignature)
     );
 
-    // The server saw a different request body.
     let changed = server.ticket(request.cup2key(), None, b"changed").unwrap();
     let proof = server.sign(&changed, RESPONSE).unwrap();
     assert_eq!(
@@ -74,7 +72,6 @@ fn signature_sizes_are_checked() {
     let request = ecdsa.prepare(REQUEST);
     let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
     let ecdsa_proof = server.sign(&ticket, RESPONSE).unwrap();
-    // An ECDSA-sized signature is malformed for an ML-DSA client.
     let request = mldsa.prepare(REQUEST);
     let hash = ecdsa_proof.as_str().split(':').nth(1).unwrap();
     let wrong = format!("{}:{hash}", ecdsa_proof.as_str().split(':').next().unwrap());
@@ -140,7 +137,6 @@ fn crosscheck() {
     let ecdsa = EcdsaSigner::from_pkcs8(8, &unhex(&read("rust_ecdsa.p8"))).unwrap();
     let server = Server::new().with(mldsa).with(ecdsa);
     for alg in ["mldsa", "ecdsa"] {
-        // Their client's request, signed by our server.
         let lines: Vec<String> = read(&format!("node_client_{alg}.txt"))
             .lines()
             .map(String::from)
@@ -152,7 +148,6 @@ fn crosscheck() {
         let proof = server.sign(&ticket, b"Response_A").unwrap();
         write(&format!("rust_proof_{alg}.txt"), proof.as_str().as_bytes());
 
-        // Their server's proof, verified by our client.
         let lines: Vec<String> = read(&format!("node_server_{alg}.txt"))
             .lines()
             .map(String::from)

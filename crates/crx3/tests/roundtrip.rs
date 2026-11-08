@@ -101,7 +101,6 @@ fn bad_extra_proof_fails_whole_crx() {
         .signer(&extra)
         .build()
         .unwrap();
-    // Flip a byte in the archive: every proof, not just the ID key's, fails.
     let mut bad = crx.clone();
     *bad.last_mut().unwrap() ^= 1;
     assert_eq!(

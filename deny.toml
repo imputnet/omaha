@@ -1,26 +1,18 @@
-# cargo-deny: licenses, security advisories, banned crates and sources of
-# everything in the dependency graph. Run by .github/scripts/deny.sh.
-
 [graph]
 all-features = true
 
 [advisories]
-# Fail on any RustSec advisory (vulnerable, unmaintained, unsound) and on
-# yanked versions in Cargo.lock.
 yanked = "deny"
 
 [licenses]
-# Licenses dependencies may use. BSD-3-Clause and ISC come from AWS-LC.
 allow = ["Apache-2.0", "MIT", "ISC", "BSD-3-Clause"]
 confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Workspace crates depend on each other by path.
 allow-wildcard-paths = true
 
 [sources]
-# Only crates.io, no git dependencies or other registries.
 unknown-registry = "deny"
 unknown-git = "deny"

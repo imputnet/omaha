@@ -23,7 +23,6 @@ pub fn id_from_hash(hash: &[u8]) -> String {
 mod tests {
     use super::*;
 
-    // Independently computed: SHA-256, first 16 bytes, hex digits mapped to a-p.
     #[test]
     fn vectors() {
         assert_eq!(id_from_public_key(b""), "odlameecjipmbmbejkplpemijjgpljce");
