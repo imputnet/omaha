@@ -1,9 +1,9 @@
 use crate::router::Router;
-use crate::source::{BoxFuture, PingSink, Source};
+use crate::source::{BoxFuture, Check, PingSink, Source};
 use bytes::Bytes;
 use futures_util::future::join_all;
 use http::header::{CONTENT_TYPE, ETAG, LOCATION};
-use http::{HeaderName, HeaderValue, Method, StatusCode};
+use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use omaha_protocol::update2::{self, ResponseMode};
 use omaha_protocol::{
@@ -248,7 +248,7 @@ impl Endpoint {
             Err(e) => return decode_error(&e),
         };
 
-        let encoded = match v4::encode_response(&self.answer(&decoded).await) {
+        let encoded = match v4::encode_response(&self.answer(&decoded, request.headers()).await) {
             Ok(encoded) => encoded,
             Err(e) => return text(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
@@ -293,7 +293,7 @@ impl Endpoint {
             Ok(decoded) => decoded,
             Err(e) => return decode_error(&e),
         };
-        let answer = self.answer(&decoded.request).await;
+        let answer = self.answer(&decoded.request, request.headers()).await;
 
         if decoded.mode == ResponseMode::Redirect {
             let Some(url) = update2::redirect_url(&answer) else {
@@ -325,8 +325,9 @@ impl Endpoint {
     }
 
     /// Answers every app of a request: ping-backs directly, the rest by
-    /// asking their sources concurrently.
-    pub async fn answer(&self, request: &Request) -> Response {
+    /// asking their sources concurrently. Sources see `headers` as the
+    /// request's HTTP headers.
+    pub async fn answer(&self, request: &Request, headers: &HeaderMap) -> Response {
         let inner = &self.inner;
         let mut answers: Vec<Option<AppResponse>> = vec![None; request.apps.len()];
         let mut checks = Vec::new();
@@ -363,7 +364,9 @@ impl Endpoint {
                 .map(|&k| &request.apps[checks[k]])
                 .collect();
             Some(async move {
-                let results = source.check(&request.client, &apps).await;
+                let results = source
+                    .check(Check::new(&request.client, &apps, headers))
+                    .await;
                 (route, results)
             })
         });

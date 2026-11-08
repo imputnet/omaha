@@ -11,16 +11,18 @@ makes sure each answer fits what the client asked for. Ping-backs are
 acknowledged without asking a source.
 
 ```rust,no_run
-use omaha_protocol::{App, AppId, AppResponse, AppStatus, Client, Outcome, UpdateCheckResponse};
-use omaha_server::{BoxFuture, Endpoint, Source};
+use omaha_protocol::{AppId, AppResponse, AppStatus, Outcome, UpdateCheckResponse};
+use omaha_server::{BoxFuture, Check, Endpoint, Source};
 
 /// Says "no update" to every app it's asked about.
 struct UpToDate;
 
 impl Source for UpToDate {
-    fn check<'a>(&'a self, _: &'a Client, apps: &'a [&'a App]) -> BoxFuture<'a, Vec<AppResponse>> {
+    fn check<'a>(&'a self, check: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>> {
         Box::pin(async move {
-            apps.iter()
+            check
+                .apps
+                .iter()
                 .map(|app| {
                     let mut answer = AppResponse::new(app.appid.clone(), AppStatus::Ok);
                     answer.updatecheck = Some(UpdateCheckResponse::new(Outcome::NoUpdate));

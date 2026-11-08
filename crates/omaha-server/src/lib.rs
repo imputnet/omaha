@@ -21,4 +21,4 @@ mod source;
 
 pub use endpoint::{Endpoint, EndpointBuilder};
 pub use router::{Route, Router, Split};
-pub use source::{BoxFuture, PingSink, Source};
+pub use source::{BoxFuture, Check, PingSink, Source};

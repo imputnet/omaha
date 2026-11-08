@@ -4,7 +4,7 @@ use bytes::Bytes;
 use cup2::aws_lc::MlDsa44Signer;
 use http_body_util::{BodyExt, Full};
 use omaha_protocol::*;
-use omaha_server::{BoxFuture, Endpoint, PingSink, Source};
+use omaha_server::{BoxFuture, Check, Endpoint, PingSink, Source};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -50,10 +50,12 @@ struct Fixed {
 }
 
 impl Source for Fixed {
-    fn check<'a>(&'a self, _: &'a Client, apps: &'a [&'a App]) -> BoxFuture<'a, Vec<AppResponse>> {
+    fn check<'a>(&'a self, check: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
-            apps.iter()
+            check
+                .apps
+                .iter()
                 .map(|app| {
                     let mut answer = AppResponse::new(app.appid.clone(), AppStatus::Ok);
                     answer.updatecheck = Some(if app.appid.as_str() == A {
@@ -72,7 +74,7 @@ impl Source for Fixed {
 struct Canned(Vec<AppResponse>);
 
 impl Source for Canned {
-    fn check<'a>(&'a self, _: &'a Client, _: &'a [&'a App]) -> BoxFuture<'a, Vec<AppResponse>> {
+    fn check<'a>(&'a self, _: Check<'a>) -> BoxFuture<'a, Vec<AppResponse>> {
         Box::pin(async move { self.0.clone() })
     }
 }
