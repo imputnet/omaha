@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/imputnet/omaha/compare/crx3-v0.2.0...crx3-v0.3.0) - 2026-11-08
+
+### Changed
+
+- bump crx3 and cup2 to 0.3.0
+- deny panicking calls in library code
+- release ([#5](https://github.com/imputnet/omaha/pull/5))
+- reformat
+- correct the chromium differences in docs
+- reject overlong protobuf varints like chromium
+
 ## [0.2.0](https://github.com/imputnet/omaha/compare/crx3-v0.1.1...crx3-v0.2.0) - 2026-11-08
 
 ### Changed
