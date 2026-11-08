@@ -11,7 +11,7 @@ categories = ["web-programming::http-server"]
 
 [dependencies]
 omaha-protocol.workspace = true
-cup2 = { workspace = true, default-features = false }
+cup2.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
@@ -30,7 +30,7 @@ default = ["aws-lc"]
 aws-lc = ["dep:aws-lc-rs"]
 
 [dev-dependencies]
-cup2.workspace = true
+cup2 = { workspace = true, features = ["aws-lc"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]

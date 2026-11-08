@@ -22,7 +22,7 @@ full = ["protocol", "crx3", "cup2", "diff", "server", "publish"]
 [dependencies]
 omaha-protocol = { workspace = true, optional = true }
 crx3 = { workspace = true, optional = true }
-cup2 = { workspace = true, optional = true }
+cup2 = { workspace = true, optional = true, features = ["aws-lc"] }
 omaha-diff = { workspace = true, optional = true }
 omaha-server = { workspace = true, optional = true }
 omaha-publish = { workspace = true, optional = true }
