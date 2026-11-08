@@ -1,0 +1,27 @@
+[package]
+name = "conformance"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+omaha-protocol.workspace = true
+omaha-server.workspace = true
+omaha-publish.workspace = true
+omaha-diff.workspace = true
+crx3.workspace = true
+object_store = { workspace = true, features = ["fs"] }
+http.workspace = true
+http-body-util.workspace = true
+bytes.workspace = true
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "process", "time"] }
+tempfile.workspace = true
+clap.workspace = true
+form_urlencoded.workspace = true
+
+[lints]
+workspace = true

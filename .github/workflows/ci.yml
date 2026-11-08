@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
@@ -47,3 +49,21 @@ jobs:
 
       - name: check build
         run: .github/scripts/msrv.sh
+
+  conformance:
+    name: conformance (chrome ${{ matrix.channel }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: run a browser against omaha-server
+        env:
+          CHROME_CHANNEL: ${{ matrix.channel }}
+        run: .github/scripts/conformance.sh
