@@ -18,11 +18,18 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 form_urlencoded = "1"
 quick-xml = { version = "0.42", default-features = false }
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+bytes = "1"
+tower-service = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+tokio = { version = "1", default-features = false }
 omaha-protocol = { path = "crates/omaha-protocol", version = "0.1.0" }
 crx3 = { path = "crates/crx3", version = "0.3.0" }
 cup2 = { path = "crates/cup2", version = "0.3.0" }
 omaha-diff = { path = "crates/omaha-diff", version = "0.0.1" }
-omaha-server = { path = "crates/omaha-server", version = "0.0.1" }
+omaha-server = { path = "crates/omaha-server", version = "0.1.0" }
 omaha-publish = { path = "crates/omaha-publish", version = "0.0.1" }
 chromium-testdata = { path = "support/chromium-testdata" }
 

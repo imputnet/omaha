@@ -1,104 +1,24 @@
-//! Server for Chromium's update protocol (Omaha).
+//! A server for Chromium's update protocols, built on `omaha-protocol`.
+//!
+//! An [`Endpoint`] is a `tower::Service` that answers Omaha 4 update checks
+//! (POST) and legacy update2 requests (GET). It routes each app ID to the
+//! [`Source`] that knows it, asks the sources concurrently, merges their
+//! answers in request order, and signs Omaha 4 responses with CUP2 when it
+//! has keys.
+//!
+//! Ping-backs are acknowledged without asking a source, and can be passed
+//! to a [`PingSink`]. Answers are checked against the request: an app gets
+//! an update check result exactly when it asked for one.
 
-use std::collections::HashMap;
-use std::hash::Hash;
+// Compile the README example as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
-/// Routes app IDs in an update check to the sources that answer them.
-#[derive(Clone, Debug)]
-pub struct Router<S> {
-    routes: HashMap<String, S>,
-}
+mod endpoint;
+mod router;
+mod source;
 
-/// One source's share of an update check.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Route<S> {
-    pub source: S,
-    /// Positions of this source's apps in the request.
-    pub apps: Vec<usize>,
-}
-
-/// An update check split up by source.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Split<S> {
-    /// Sources in order of their first app in the request.
-    pub routes: Vec<Route<S>>,
-    /// Positions of apps no source knows.
-    pub unknown: Vec<usize>,
-}
-
-impl<S: Clone + Eq + Hash> Router<S> {
-    pub fn new() -> Self {
-        Router {
-            routes: HashMap::new(),
-        }
-    }
-
-    pub fn route(mut self, appid: impl Into<String>, source: S) -> Self {
-        self.routes.insert(appid.into(), source);
-        self
-    }
-
-    /// Splits the app IDs of a request by source, keeping request order so
-    /// answers can be merged back in place.
-    pub fn split<'a>(&self, appids: impl IntoIterator<Item = &'a str>) -> Split<S> {
-        let mut routes: Vec<Route<S>> = Vec::new();
-        let mut index: HashMap<S, usize> = HashMap::new();
-        let mut unknown = Vec::new();
-        for (i, appid) in appids.into_iter().enumerate() {
-            let Some(source) = self.routes.get(appid) else {
-                unknown.push(i);
-                continue;
-            };
-            let slot = *index.entry(source.clone()).or_insert_with(|| {
-                routes.push(Route {
-                    source: source.clone(),
-                    apps: Vec::new(),
-                });
-                routes.len() - 1
-            });
-            routes[slot].apps.push(i);
-        }
-        Split { routes, unknown }
-    }
-}
-
-impl<S: Clone + Eq + Hash> Default for Router<S> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn splits_by_source_in_order() {
-        let router = Router::new()
-            .route("a", "local")
-            .route("b", "upstream")
-            .route("c", "local");
-        let split = router.split(["b", "x", "a", "c", "y"]);
-        assert_eq!(
-            split.routes,
-            vec![
-                Route {
-                    source: "upstream",
-                    apps: vec![0]
-                },
-                Route {
-                    source: "local",
-                    apps: vec![2, 3]
-                },
-            ]
-        );
-        assert_eq!(split.unknown, vec![1, 4]);
-    }
-
-    #[test]
-    fn empty() {
-        let router: Router<u8> = Router::default();
-        let split = router.split([]);
-        assert!(split.routes.is_empty() && split.unknown.is_empty());
-    }
-}
+pub use endpoint::{Endpoint, EndpointBuilder};
+pub use router::{Route, Router, Split};
+pub use source::{BoxFuture, PingSink, Source};
