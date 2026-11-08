@@ -11,16 +11,20 @@
 //! Verification is meant to accept exactly what Chromium accepts. Where it
 //! knowingly doesn't:
 //!
-//! - ECDSA proofs must use P-256. Chromium accepts any EC key in
+//! - ECDSA proofs must use P-256. Chromium also accepts P-384 and P-521 in
 //!   `sha256_with_ecdsa`, but every key it pins or generates is P-256.
 //! - Protobuf groups in the header are rejected rather than skipped. The
 //!   header format has none, so only crafted files contain them.
 //! - Headers larger than [`MAX_HEADER_LEN`] are rejected, to bound memory
 //!   use before any signature is checked.
 //!
-//! Like Chromium, keys must be canonical DER SubjectPublicKeyInfo, and RSA
-//! keys from 1024 bits are accepted for verification (old Chrome Web Store
-//! keys are 1024-bit). Generated RSA keys are 2048 bits.
+//! - Keys must be canonical DER SubjectPublicKeyInfo. Chromium also accepts
+//!   non-canonical but valid encodings, such as compressed EC points.
+//!
+//! RSA keys from 1024 to 8192 bits are accepted for verification (old Chrome
+//! Web Store keys are 1024-bit); keys outside that range fail as
+//! [`VerifyError::SignatureVerificationFailed`]. Generated RSA keys are 2048
+//! bits.
 
 // Compile the README example as a doctest.
 #[cfg(doctest)]
