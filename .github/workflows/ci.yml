@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -31,33 +31,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: check dependencies
         run: .github/scripts/deny.sh
 
-  zizmor:
-    name: zizmor
+  workflows:
+    name: workflows
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: audit workflows
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: .github/scripts/zizmor.sh
+
+      - name: check the actions lockfile
+        run: .github/scripts/actions-lock.sh
 
   msrv:
     name: msrv
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -73,7 +76,7 @@ jobs:
         channel: [Stable, Beta]
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
