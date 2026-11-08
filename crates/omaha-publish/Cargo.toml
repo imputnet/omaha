@@ -1,12 +1,41 @@
 [package]
 name = "omaha-publish"
-description = "Build signed, deterministic component feeds for Chromium's update protocol"
-version.workspace = true
+description = "Publish signed CRX feeds for Chromium's update protocol: archives, patches, indexes and uploads"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[dependencies]
+omaha-protocol.workspace = true
+omaha-server.workspace = true
+omaha-diff.workspace = true
+crx3.workspace = true
+zip = { workspace = true, features = ["deflate-flate2"] }
+flate2.workspace = true
+object_store.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
+pem-rfc7468 = { workspace = true, optional = true }
+
+[features]
+default = ["cli", "s3"]
+cli = ["dep:clap", "dep:tokio", "dep:pem-rfc7468", "object_store/fs", "crx3/aws-lc", "omaha-server/aws-lc"]
+s3 = ["object_store/aws"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile.workspace = true
+
 [lints]
 workspace = true
+
+[[bin]]
+name = "omaha-publish"
+path = "src/main.rs"
+required-features = ["cli"]

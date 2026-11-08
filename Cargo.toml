@@ -21,6 +21,9 @@ base64 = "0.22"
 tempfile = "3"
 zip = { version = "9", default-features = false }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+object_store = { version = "0.14", default-features = false }
+clap = { version = "4", features = ["derive"] }
+pem-rfc7468 = { version = "1", features = ["alloc"] }
 quick-xml = { version = "0.42", default-features = false }
 http = "1"
 http-body = "1"
@@ -34,7 +37,7 @@ crx3 = { path = "crates/crx3", version = "0.3.0" }
 cup2 = { path = "crates/cup2", version = "0.3.0", default-features = false }
 omaha-diff = { path = "crates/omaha-diff", version = "0.1.0" }
 omaha-server = { path = "crates/omaha-server", version = "0.1.0" }
-omaha-publish = { path = "crates/omaha-publish", version = "0.0.1" }
+omaha-publish = { path = "crates/omaha-publish", version = "0.1.0" }
 chromium-testdata = { path = "support/chromium-testdata" }
 
 [workspace.lints.rust]
