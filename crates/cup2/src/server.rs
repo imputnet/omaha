@@ -1,4 +1,4 @@
-use crate::{Error, KeyId, ProofData, Ticket};
+use crate::{Error, KeyId, MLDSA44_SIGNATURE_LEN, ProofData, Ticket};
 use std::fmt;
 
 /// Something that can sign CUP proof data: a key in memory, an HSM, or a
@@ -90,12 +90,27 @@ impl Server {
     }
 
     /// Signs `response_body` for the request behind `ticket`. Sign the exact
-    /// bytes that will be sent.
+    /// bytes that will be sent. Fails for an empty body, which Chromium never
+    /// accepts, and for signatures of a size Chromium would reject.
     pub fn sign(&self, ticket: &Ticket, response_body: &[u8]) -> Result<Proof, SignError> {
+        if response_body.is_empty() {
+            return Err(SignError::new("Chromium rejects empty CUP responses"));
+        }
         let signer = self
             .signer(ticket.key_id())
             .ok_or_else(|| SignError::new(format!("no CUP key {}", ticket.key_id())))?;
         let signature = signer.sign(&ticket.proof_data(response_body))?;
+        let size_ok = match ticket.key_id() {
+            KeyId::Ecdsa(_) => (8..=72).contains(&signature.len()),
+            KeyId::MlDsa44(_) => signature.len() == MLDSA44_SIGNATURE_LEN,
+        };
+        if !size_ok {
+            return Err(SignError::new(format!(
+                "{}-byte signature from signer for {}",
+                signature.len(),
+                ticket.key_id()
+            )));
+        }
         Ok(Proof(ticket.server_proof(&signature)))
     }
 

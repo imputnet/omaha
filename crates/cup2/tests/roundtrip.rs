@@ -167,3 +167,27 @@ fn empty_cup2hreq_counts_as_absent() {
     let request = client.prepare(REQUEST);
     assert!(server.ticket(request.cup2key(), Some(""), REQUEST).is_ok());
 }
+
+#[test]
+fn refuses_empty_bodies_and_bad_signer_output() {
+    use cup2::{ProofData, SignError, Signer};
+
+    struct RawEcdsa;
+    impl Signer for RawEcdsa {
+        fn key_id(&self) -> KeyId {
+            KeyId::Ecdsa(8)
+        }
+        fn sign(&self, _: &ProofData) -> Result<Vec<u8>, SignError> {
+            Ok(vec![1; 64 + 9])
+        }
+    }
+
+    let (server, client, _) = servers();
+    let request = client.prepare(REQUEST);
+    let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
+    assert!(server.sign(&ticket, b"").is_err());
+
+    let raw = Server::new().with(RawEcdsa);
+    let ticket = raw.ticket("8:nonce", None, REQUEST).unwrap();
+    assert!(raw.sign(&ticket, RESPONSE).is_err());
+}
