@@ -1,18 +1,43 @@
-//! Chromium's Client Update Protocol (CUP2).
+//! Chromium's Client Update Protocol (CUP2): signed update responses.
 //!
-//! The client sends `cup2key=<key id>:<nonce>` (and optionally
-//! `cup2hreq=<hex sha256 of the request body>`). The server signs
-//! `SHA-256(SHA-256(request) || SHA-256(response) || "<key id>:<nonce>")`
+//! The client sends `cup2key=<key id>:<nonce>` and
+//! `cup2hreq=<hex SHA-256 of the request body>` as query parameters. The
+//! server signs
+//!
+//! ```text
+//! proof data = SHA-256(SHA-256(request) || SHA-256(response) || "<key id>:<nonce>")
+//! ```
+//!
 //! and returns `X-Cup-Server-Proof: <hex signature>:<hex request hash>`.
 //!
-//! This crate computes tickets, proof data and the proof header. Producing
-//! the signature itself is left to the caller, so keys can live anywhere.
+//! Two schemes exist. ML-DSA-44 (key IDs like `ML-DSA-44-16`) signs the proof
+//! data itself and is the only one current Chromium asks for. ECDSA P-256 (key
+//! IDs like `8`) signs SHA-256 of the proof data with a DER signature, for
+//! older Chromium versions.
+//!
+//! [`Server`] issues proofs through the [`Signer`] trait, so keys can live
+//! anywhere. With the default `aws-lc` feature, [`aws_lc`] has signers and
+//! [`Client`] verifies proofs.
+
+// Compile and run the README example as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "aws-lc")]
+pub mod aws_lc;
+#[cfg(feature = "aws-lc")]
+mod client;
 mod hex;
+mod server;
+
+#[cfg(feature = "aws-lc")]
+pub use client::{Client, ClientRequest, VerifyError};
+pub use server::{Proof, Server, SignError, Signer};
 
 /// A CUP key ID as it appears in `cup2key`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -25,6 +50,9 @@ pub enum KeyId {
 }
 
 const MLDSA44_PREFIX: &str = "ML-DSA-44-";
+
+/// Size of an ML-DSA-44 signature.
+pub const MLDSA44_SIGNATURE_LEN: usize = 2420;
 
 fn parse_key_version(s: &str) -> Option<u32> {
     let n: u32 = s.parse().ok()?;
@@ -54,9 +82,12 @@ impl fmt::Display for KeyId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// `cup2key` is not `<key id>:<nonce>` with a valid key ID.
     InvalidKey,
+    /// The requested key ID is valid, but the server has no such key.
+    UnknownKey(KeyId),
     /// `cup2hreq` is not hex or doesn't match the request body.
     RequestHashMismatch,
 }
@@ -65,6 +96,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::InvalidKey => f.write_str("invalid cup2key"),
+            Error::UnknownKey(id) => write!(f, "no CUP key {id}"),
             Error::RequestHashMismatch => f.write_str("cup2hreq does not match the request"),
         }
     }
@@ -104,11 +136,7 @@ impl Ticket {
 
     /// The data the server signs for `response_body`.
     pub fn proof_data(&self, response_body: &[u8]) -> [u8; 32] {
-        let mut h = Sha256::new();
-        h.update(self.request_hash);
-        h.update(Sha256::digest(response_body));
-        h.update(format!("{}:{}", self.key_id, self.nonce));
-        h.finalize().into()
+        proof_data(&self.request_hash, response_body, &self.key_id, &self.nonce)
     }
 
     /// The `X-Cup-Server-Proof` header value for an encoded signature.
@@ -119,6 +147,37 @@ impl Ticket {
             hex::encode(&self.request_hash)
         )
     }
+}
+
+pub(crate) fn proof_data(
+    request_hash: &[u8; 32],
+    response_body: &[u8],
+    key_id: &KeyId,
+    nonce: &str,
+) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(request_hash);
+    h.update(Sha256::digest(response_body));
+    h.update(format!("{key_id}:{nonce}"));
+    h.finalize().into()
+}
+
+/// Splits a proof (`X-Cup-Server-Proof` value, or an `ETag` in the same
+/// format, optionally weak and quoted) into signature and request hash, the
+/// way Chromium parses it.
+pub fn parse_proof(value: &str) -> Option<(Vec<u8>, [u8; 32])> {
+    let value = value.strip_prefix("W/").unwrap_or(value);
+    let value = match value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+        Some(inner) => inner,
+        None => value,
+    };
+    let (sig, hash) = value.split_once(':')?;
+    if sig.is_empty() || hash.is_empty() {
+        return None;
+    }
+    let sig = hex::decode(sig)?;
+    let hash = hex::decode(hash)?.try_into().ok()?;
+    Some((sig, hash))
 }
 
 #[cfg(test)]
@@ -159,5 +218,25 @@ mod tests {
             Ticket::new("8:1", Some("zz"), b"body"),
             Err(Error::RequestHashMismatch)
         );
+    }
+
+    #[test]
+    fn parses_proofs() {
+        let hash = hex::encode(&[7; 32]);
+        let (sig, h) = parse_proof(&format!("abcd:{hash}")).unwrap();
+        assert_eq!((sig.as_slice(), h), (&[0xab, 0xcd][..], [7; 32]));
+        assert!(parse_proof(&format!("W/\"abcd:{hash}\"")).is_some());
+        assert!(parse_proof(&format!("\"abcd:{hash}\"")).is_some());
+        for bad in [
+            String::new(),
+            ":".into(),
+            format!(":{hash}"),
+            "abcd:".into(),
+            format!("abc:{hash}"),
+            format!("abcd:{}", &hash[2..]),
+            format!("zz:{hash}"),
+        ] {
+            assert_eq!(parse_proof(&bad), None, "{bad:?}");
+        }
     }
 }

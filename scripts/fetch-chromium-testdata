@@ -10,6 +10,7 @@ set -eu
 # Chromium src commit the tests are pinned to.
 REV=7ff956173add630906515187ce16a956f0d2074e
 FILES="
+components/client_update_protocol/cup_unittest.cc
 components/crx_file/crx_verifier_unittest.cc
 components/crx_file/id_util_unittest.cc
 components/test/data/crx_file/unsigned.crx3
