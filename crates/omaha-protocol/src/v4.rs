@@ -4,7 +4,7 @@ use crate::limits::{DecodeError, Limits};
 use crate::model::*;
 use crate::validate::{EncodeError, is_http_url, validate};
 use crate::{AppId, Sha256, Version};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 
 /// Prefix of every JSON response, so it can't be run as a script.
@@ -32,8 +32,11 @@ struct WireRequest {
     acceptformat: Option<String>,
     prodchannel: Option<String>,
     updaterchannel: Option<String>,
+    #[serde(deserialize_with = "boolish")]
     ismachine: Option<bool>,
+    #[serde(deserialize_with = "boolish")]
     wow64: Option<bool>,
+    #[serde(deserialize_with = "boolish")]
     domainjoined: Option<bool>,
     dlpref: Option<String>,
     hw: Option<Value>,
@@ -74,6 +77,7 @@ struct WireApp {
     #[serde(default)]
     cohorthint: Option<String>,
     #[serde(default)]
+    #[serde(deserialize_with = "boolish")]
     enabled: Option<bool>,
     #[serde(default)]
     disabled: Vec<WireDisabled>,
@@ -89,6 +93,7 @@ struct WireApp {
 
 #[derive(Deserialize)]
 struct WireDisabled {
+    #[serde(deserialize_with = "integerish")]
     reason: i64,
 }
 
@@ -100,9 +105,12 @@ struct WireHash {
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct WireUpdateCheck {
-    updatedisabled: bool,
-    rollback_allowed: bool,
-    sameversionupdate: bool,
+    #[serde(deserialize_with = "boolish")]
+    updatedisabled: Option<bool>,
+    #[serde(deserialize_with = "boolish")]
+    rollback_allowed: Option<bool>,
+    #[serde(deserialize_with = "boolish")]
+    sameversionupdate: Option<bool>,
     targetversionprefix: Option<String>,
 }
 
@@ -189,24 +197,53 @@ pub fn decode_request(body: &[u8], limits: &Limits) -> Result<Request, DecodeErr
     })
 }
 
-/// A capability flag: JSON boolean (as Chromium sends it), or `"1"`, `"0"`
-/// and `"-1"` (unknown) as protocol_4.md describes it.
-fn flag(v: Option<&Value>) -> Result<Option<bool>, DecodeError> {
+/// A boolean in any form Chromium or protocol_4.md uses: JSON `true` and
+/// `false`, `1`, `0` and `-1` (unknown) as numbers or strings, or `"true"`
+/// and `"false"`.
+fn parse_flag(v: &Value) -> Option<Result<bool, ()>> {
     match v {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Bool(b)) => Ok(Some(*b)),
-        Some(v) => match v
-            .as_str()
-            .map(str::to_owned)
-            .or_else(|| v.as_i64().map(|n| n.to_string()))
-            .as_deref()
-        {
-            Some("1") => Ok(Some(true)),
-            Some("0") => Ok(Some(false)),
-            Some("-1") => Ok(None),
-            _ => Err(DecodeError::Invalid("hw")),
+        Value::Null => None,
+        Value::Bool(b) => Some(Ok(*b)),
+        Value::Number(n) => match n.as_i64() {
+            Some(1) => Some(Ok(true)),
+            Some(0) => Some(Ok(false)),
+            Some(-1) => None,
+            _ => Some(Err(())),
         },
+        Value::String(s) => match s.as_str() {
+            "1" | "true" => Some(Ok(true)),
+            "0" | "false" => Some(Ok(false)),
+            "-1" => None,
+            _ => Some(Err(())),
+        },
+        _ => Some(Err(())),
     }
+}
+
+fn boolish<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
+    match Option::<Value>::deserialize(d)?
+        .as_ref()
+        .and_then(parse_flag)
+    {
+        None => Ok(None),
+        Some(Ok(b)) => Ok(Some(b)),
+        Some(Err(())) => Err(serde::de::Error::custom("invalid boolean")),
+    }
+}
+
+fn integerish<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    match Value::deserialize(d)? {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+    .ok_or_else(|| serde::de::Error::custom("invalid integer"))
+}
+
+fn flag(v: Option<&Value>) -> Result<Option<bool>, DecodeError> {
+    v.and_then(parse_flag)
+        .transpose()
+        .map_err(|()| DecodeError::Invalid("hw"))
 }
 
 fn decode_hw(v: &Value) -> Result<Hardware, DecodeError> {
@@ -316,9 +353,9 @@ fn decode_app(a: WireApp, limits: &Limits) -> Result<App, DecodeError> {
         .updatecheck
         .map(|u| {
             Ok::<_, DecodeError>(UpdateCheck {
-                updatedisabled: u.updatedisabled,
-                rollback_allowed: u.rollback_allowed,
-                sameversionupdate: u.sameversionupdate,
+                updatedisabled: u.updatedisabled.unwrap_or(false),
+                rollback_allowed: u.rollback_allowed.unwrap_or(false),
+                sameversionupdate: u.sameversionupdate.unwrap_or(false),
                 targetversionprefix: limits.string("targetversionprefix", u.targetversionprefix)?,
             })
         })

@@ -529,3 +529,26 @@ fn refuses_invalid_responses() {
     mixed.apps[0].events = vec![EventStatus::Ok];
     assert_eq!(err(mixed), EncodeError::MixedPingback { appid: a() });
 }
+
+#[test]
+fn accepts_protocol_4_value_forms() {
+    let body = br#"{"request":{"protocol":"4.0","ismachine":-1,"wow64":"1","domainjoined":"false","apps":[
+        {"appid":"a","enabled":"0","disabled":[{"reason":"1024"},{"reason":2}],
+         "updatecheck":{"updatedisabled":"true","rollback_allowed":1,"sameversionupdate":false}}]}}"#;
+    let r = v4::decode_request(body, &Limits::default()).unwrap();
+    assert_eq!(
+        (r.client.ismachine, r.client.wow64, r.client.domainjoined),
+        (false, true, Some(false))
+    );
+    let app = &r.apps[0];
+    assert_eq!(app.enabled, Some(false));
+    assert_eq!(app.disabled_reasons, [1024, 2]);
+    let u = app.updatecheck.as_ref().unwrap();
+    assert!(u.updatedisabled && u.rollback_allowed && !u.sameversionupdate);
+
+    let bad = br#"{"request":{"protocol":"4.0","apps":[{"appid":"a","enabled":"yes"}]}}"#;
+    assert!(matches!(
+        v4::decode_request(bad, &Limits::default()),
+        Err(DecodeError::Syntax(_))
+    ));
+}
