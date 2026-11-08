@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/imputnet/omaha/compare/omaha-server-v0.1.0...omaha-server-v0.1.1) - 2026-11-08
+
+### Changed
+
+- check an index's signatures without its expiry
+
 ## [0.1.0](https://github.com/imputnet/omaha/compare/omaha-server-v0.0.1...omaha-server-v0.1.0) - 2026-11-08
 
 ### Added
