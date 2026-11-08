@@ -22,6 +22,11 @@
 //! keys from 1024 bits are accepted for verification (old Chrome Web Store
 //! keys are 1024-bit). Generated RSA keys are 2048 bits.
 
+// Compile the README example as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 mod container;
 mod create;
 mod id;
