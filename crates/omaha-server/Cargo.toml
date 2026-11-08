@@ -39,3 +39,7 @@ workspace = true
 [[test]]
 name = "index"
 required-features = ["aws-lc"]
+
+[[test]]
+name = "static_index"
+required-features = ["aws-lc"]

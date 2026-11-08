@@ -11,7 +11,8 @@
 //! an update check result exactly when it asked for one.
 //!
 //! The [`index`] module defines a signed list of releases and answers
-//! update checks from it.
+//! update checks from it. [`StaticIndex`] serves one and swaps in new ones
+//! while the server runs.
 
 // Compile the README example as a doctest.
 #[cfg(doctest)]
@@ -22,7 +23,9 @@ mod endpoint;
 pub mod index;
 mod router;
 mod source;
+mod static_index;
 
 pub use endpoint::{Endpoint, EndpointBuilder};
 pub use router::{Route, Router, Split};
 pub use source::{BoxFuture, Check, PingSink, Source};
+pub use static_index::{ReplaceError, Replaced, StaticIndex, StaticIndexBuilder};

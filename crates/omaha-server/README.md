@@ -47,7 +47,9 @@ server. Add CUP2 signing with `.cup(cup2::Server::new().with(signer))`.
 The `index` module defines a signed index of releases (JSON in a DSSE
 envelope, with a serial and an expiry against replays) and answers update
 checks from it: the newest release the client qualifies for, with a patch
-pipeline first when the client has a CRX to patch from.
+pipeline first when the client has a CRX to patch from. `StaticIndex` serves
+one as a source and swaps in newer ones while the server runs, refusing
+older serials.
 
 ## License
 
