@@ -11,6 +11,8 @@ omaha-publish pack --key crx.pem component/ component.crx3
 omaha-publish publish --store s3://bucket/feed --key index.pem \
     --puffin out/Release/puffin component.crx3
 omaha-publish refresh --store s3://bucket/feed --key index.pem
+omaha-publish verify --files component/ component.crx3
+omaha-publish id crx.pem
 ```
 
 - `publish` uploads the CRX and patches to it from the newest earlier
@@ -19,6 +21,9 @@ omaha-publish refresh --store s3://bucket/feed --key index.pem
   published in the meantime.
 - `refresh` re-signs the index with a new expiry. Run it on a schedule
   shorter than `--lifetime-days`, so servers never see it expire.
+- `verify` checks a CRX's proofs as Chromium does and, given `--files`,
+  that it packs exactly those files, so anyone can rebuild and compare
+  without the key. `id` prints the app ID and key hash a key gives.
 - Stores are `file:///path` or, with the `s3` feature, `s3://bucket/prefix`
   configured through the usual `AWS_*` variables. Set `AWS_ENDPOINT` for
   S3-compatible stores such as R2.

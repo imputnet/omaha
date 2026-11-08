@@ -49,6 +49,24 @@ enum Command {
         dir: PathBuf,
         out: PathBuf,
     },
+    /// Print the app ID and key hash a CRX signing key (PKCS#8 PEM) gives.
+    Id { key: PathBuf },
+    /// Verify a CRX's proofs the way Chromium does, and optionally that it
+    /// packs exactly the files in a directory.
+    Verify {
+        /// Also require a proof by the key with this SHA-256 (hex). Repeat
+        /// to require several.
+        #[arg(long)]
+        key_hash: Vec<String>,
+        /// Rebuild the archive from this directory and require the CRX's to
+        /// be identical, as `pack` would make it.
+        #[arg(long)]
+        files: Option<PathBuf>,
+        /// The archive was packed with `--stored`.
+        #[arg(long)]
+        stored: bool,
+        crx: PathBuf,
+    },
     /// Add a CRX to a feed: upload it, patches to it, and a new index.
     Publish {
         #[command(flatten)]
@@ -192,6 +210,18 @@ fn write_pem(label: &str, der: &[u8]) -> Result<String> {
     )?)
 }
 
+fn compression(stored: bool) -> Compression {
+    if stored {
+        Compression::Stored
+    } else {
+        Compression::Deflated
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn crx_signer(path: &Path) -> Result<Box<dyn crx3::Signer>> {
     let der = read_pem(path, "PRIVATE KEY")?;
 
@@ -227,6 +257,54 @@ async fn run(command: Command) -> Result<()> {
             let key = EcdsaSigner::from_pkcs8(&read_pem(&key, "PRIVATE KEY")?)?;
             print!("{}", write_pem("PUBLIC KEY", key.public_key())?);
         }
+        Command::Id { key } => {
+            let signer = crx_signer(&key)?;
+            let spki = signer.public_key();
+            println!("app ID: {}", crx3::id_from_public_key(spki));
+            println!("key SHA-256: {}", hex(crx3::key_hash(spki).as_bytes()));
+        }
+        Command::Verify {
+            key_hash,
+            files,
+            stored,
+            crx,
+        } => {
+            let bytes = std::fs::read(&crx).map_err(|e| format!("{}: {e}", crx.display()))?;
+            let required = key_hash
+                .iter()
+                .map(|h| {
+                    h.parse::<omaha_protocol::Sha256>()
+                        .map(|h| crx3::KeyHash::from_bytes(*h.as_bytes()))
+                        .map_err(|_| format!("--key-hash {h}: expected 64 hex digits"))
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            let policy = crx3::Policy {
+                required_keys: &required,
+                any_of: &[],
+            };
+            let verified = crx3::verify(&bytes, &policy)?;
+
+            if let Some(dir) = &files {
+                let files = archive::read_dir(dir)?;
+                let rebuilt = archive::archive(
+                    files.iter().map(|(p, d)| (p.as_str(), d.as_slice())),
+                    compression(stored),
+                )?;
+
+                if crx3::split(&bytes)?.archive != rebuilt.as_slice() {
+                    return Err(format!(
+                        "{}: the archive differs from what {} packs to",
+                        crx.display(),
+                        dir.display()
+                    )
+                    .into());
+                }
+
+                println!("{} ok, archive matches", verified.id);
+            } else {
+                println!("{} ok", verified.id);
+            }
+        }
         Command::Pack {
             key,
             stored,
@@ -234,14 +312,9 @@ async fn run(command: Command) -> Result<()> {
             out,
         } => {
             let files = archive::read_dir(&dir)?;
-            let compression = if stored {
-                Compression::Stored
-            } else {
-                Compression::Deflated
-            };
             let zip = archive::archive(
                 files.iter().map(|(p, d)| (p.as_str(), d.as_slice())),
-                compression,
+                compression(stored),
             )?;
             let signer = crx_signer(&key)?;
             let crx = crx3::Builder::new().signer(signer.as_ref()).build(&zip)?;
