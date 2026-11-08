@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "crx3"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "cup2"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
