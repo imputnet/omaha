@@ -115,7 +115,7 @@ pub struct Ticket {
 
 impl Ticket {
     /// Builds a ticket from the `cup2key` and optional `cup2hreq` query
-    /// values and the raw request body.
+    /// values and the raw request body. An empty `cup2hreq` counts as absent.
     pub fn new(cup2key: &str, cup2hreq: Option<&str>, body: &[u8]) -> Result<Self, Error> {
         let (key_id, nonce) = cup2key.split_once(':').ok_or(Error::InvalidKey)?;
         if nonce.is_empty() || nonce.contains(':') {
@@ -123,7 +123,7 @@ impl Ticket {
         }
         let key_id = key_id.parse()?;
         let request_hash: [u8; 32] = Sha256::digest(body).into();
-        if let Some(hreq) = cup2hreq
+        if let Some(hreq) = cup2hreq.filter(|h| !h.is_empty())
             && hex::decode(hreq).as_deref() != Some(&request_hash[..])
         {
             return Err(Error::RequestHashMismatch);

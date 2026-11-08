@@ -160,3 +160,10 @@ fn crosscheck() {
         write(&format!("rust_verified_{alg}.txt"), b"ok");
     }
 }
+
+#[test]
+fn empty_cup2hreq_counts_as_absent() {
+    let (server, client, _) = servers();
+    let request = client.prepare(REQUEST);
+    assert!(server.ticket(request.cup2key(), Some(""), REQUEST).is_ok());
+}
