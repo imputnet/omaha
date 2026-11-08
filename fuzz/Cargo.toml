@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 crx3 = { path = "../crates/crx3" }
 omaha-protocol = { path = "../crates/omaha-protocol" }
+omaha-server = { path = "../crates/omaha-server", default-features = false }
 
 [[bin]]
 name = "crx3_verify"
@@ -36,6 +37,13 @@ bench = false
 [[bin]]
 name = "update2_query"
 path = "fuzz_targets/update2_query.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "index"
+path = "fuzz_targets/index.rs"
 test = false
 doc = false
 bench = false
