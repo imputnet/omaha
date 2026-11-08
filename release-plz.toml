@@ -20,10 +20,6 @@ commit_parsers = [
 # Stubs that only hold their name for now. Drop each entry once the crate
 # has real content.
 [[package]]
-name = "cup2"
-release = false
-
-[[package]]
 name = "omaha"
 release = false
 
