@@ -5,7 +5,7 @@ all-features = true
 yanked = "deny"
 
 [licenses]
-allow = ["Apache-2.0", "MIT", "ISC", "BSD-3-Clause"]
+allow = ["Apache-2.0", "MIT", "ISC", "BSD-3-Clause", "Unicode-3.0"]
 confidence-threshold = 0.9
 
 [bans]
