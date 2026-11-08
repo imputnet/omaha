@@ -552,3 +552,49 @@ fn accepts_protocol_4_value_forms() {
         Err(DecodeError::Syntax(_))
     ));
 }
+
+#[test]
+fn refuses_ambiguous_statuses_and_huge_sizes() {
+    let mut app = AppResponse::new(id("a"), AppStatus::Ok);
+    app.updatecheck = Some(UpdateCheckResponse::new(Outcome::Error(
+        UpdateCheckError::Other("ok".into()),
+    )));
+    let r = Response {
+        apps: vec![app],
+        ..Default::default()
+    };
+    assert_eq!(
+        v4::encode_response(&r).unwrap_err(),
+        EncodeError::InvalidStatus { appid: "a".into() }
+    );
+
+    let h = hash(H1);
+    let mut app = AppResponse::new(id("a"), AppStatus::Ok);
+    app.updatecheck = Some(UpdateCheckResponse::new(Outcome::Update {
+        nextversion: "1".parse().unwrap(),
+        pipelines: vec![Pipeline {
+            id: "p".into(),
+            operations: vec![
+                Operation::Download {
+                    size: 1 << 53,
+                    out: h,
+                    urls: vec!["https://x.example/a".into()],
+                },
+                Operation::Crx3 {
+                    input: h,
+                    size: None,
+                    path: None,
+                    arguments: None,
+                },
+            ],
+        }],
+    }));
+    let r = Response {
+        apps: vec![app],
+        ..Default::default()
+    };
+    assert!(matches!(
+        v4::encode_response(&r),
+        Err(EncodeError::InvalidDownload { .. })
+    ));
+}

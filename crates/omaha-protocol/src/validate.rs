@@ -38,6 +38,10 @@ pub enum EncodeError {
     MixedPingback {
         appid: String,
     },
+    /// An update check error whose status reads as `ok` or `noupdate`.
+    InvalidStatus {
+        appid: String,
+    },
 }
 
 impl fmt::Display for EncodeError {
@@ -62,6 +66,9 @@ impl fmt::Display for EncodeError {
             EncodeError::UnknownOperation { appid, pipeline } => {
                 write!(f, "{appid}: unknown operation in pipeline {pipeline:?}")
             }
+            EncodeError::InvalidStatus { appid } => {
+                write!(f, "{appid}: update check error with a non-error status")
+            }
             EncodeError::MixedPingback { appid } => {
                 write!(
                     f,
@@ -73,6 +80,10 @@ impl fmt::Display for EncodeError {
 }
 
 impl std::error::Error for EncodeError {}
+
+/// Sizes from 2^53 can't be represented exactly in JSON numbers, and
+/// Chromium reads them as 0.
+const MAX_SIZE: u64 = 1 << 53;
 
 pub(crate) fn is_http_url(url: &str) -> bool {
     let rest = url
@@ -98,6 +109,14 @@ pub fn validate(response: &Response) -> Result<(), EncodeError> {
         if !app.events.is_empty() && (app.updatecheck.is_some() || !app.data.is_empty()) {
             return Err(EncodeError::MixedPingback { appid: appid() });
         }
+        if let Some(UpdateCheckResponse {
+            outcome: Outcome::Error(e),
+            ..
+        }) = &app.updatecheck
+            && matches!(e.as_str(), "" | "ok" | "noupdate")
+        {
+            return Err(EncodeError::InvalidStatus { appid: appid() });
+        }
         let Some(UpdateCheckResponse {
             outcome: Outcome::Update { pipelines, .. },
             ..
@@ -119,7 +138,11 @@ pub fn validate(response: &Response) -> Result<(), EncodeError> {
             for (i, op) in p.operations.iter().enumerate() {
                 match op {
                     Operation::Download { size, urls, .. } => {
-                        if *size == 0 || urls.is_empty() || !urls.iter().all(|u| is_http_url(u)) {
+                        if *size == 0
+                            || *size >= MAX_SIZE
+                            || urls.is_empty()
+                            || !urls.iter().all(|u| is_http_url(u))
+                        {
                             return Err(EncodeError::InvalidDownload {
                                 appid: appid(),
                                 pipeline: pipeline(),
