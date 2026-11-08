@@ -139,12 +139,15 @@ fn finish(
     mut out: impl Write,
 ) -> Result<(), BuildError> {
     let header = encode_header(header);
+
     if contains_zip_token(&header) {
         return Err(BuildError::HeaderContainsZipToken);
     }
+
     if u32::try_from(header.len()).is_err() {
         return Err(BuildError::TooLarge);
     }
+
     write_header(&mut out, diff, &header)?;
     io::copy(&mut archive, &mut out)?;
     Ok(())

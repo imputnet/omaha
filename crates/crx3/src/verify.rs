@@ -113,9 +113,11 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
         ReadError::Invalid => VerifyError::HeaderInvalid,
         ReadError::Io(e) => VerifyError::Io(e.kind()),
     })?;
+
     if contains_zip_token(&header_bytes) {
         return Err(VerifyError::HeaderInvalid);
     }
+
     let header = decode_header(&header_bytes).map_err(|_| VerifyError::HeaderInvalid)?;
     let crx_id =
         decode_signed_data(header.signed_header_data).map_err(|_| VerifyError::HeaderInvalid)?;
@@ -134,15 +136,18 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
         .chain(header.sha256_with_ecdsa.iter().map(|p| (ecdsa, p)));
     for (alg, proof) in proofs {
         let hash = key_hash(proof.public_key);
+
         if crx_id.len() == 16 && hash.as_bytes()[..16] == *crx_id {
             developer_key = Some(proof.public_key);
         }
+
         missing.retain(|k| **k != hash);
         found_any_of |= policy.any_of.contains(&hash);
         checks.push((parse_key(alg, proof.public_key)?, proof.signature));
     }
 
     let developer_key = developer_key.ok_or(VerifyError::RequiredProofMissing)?;
+
     if !missing.is_empty() || (!policy.any_of.is_empty() && !found_any_of) {
         return Err(VerifyError::RequiredProofMissing);
     }

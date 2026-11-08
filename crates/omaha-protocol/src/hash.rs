@@ -31,9 +31,11 @@ impl FromStr for Sha256 {
 
     fn from_str(s: &str) -> Result<Self, ParseHashError> {
         let s = s.as_bytes();
+
         if s.len() != 64 {
             return Err(ParseHashError);
         }
+
         let mut out = [0u8; 32];
         for (i, pair) in s.chunks(2).enumerate() {
             let digit = |c: u8| char::from(c).to_digit(16).ok_or(ParseHashError);

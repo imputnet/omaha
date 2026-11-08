@@ -96,6 +96,7 @@ impl Server {
         if response_body.is_empty() {
             return Err(SignError::new("Chromium rejects empty CUP responses"));
         }
+
         let signer = self
             .signer(ticket.key_id())
             .ok_or_else(|| SignError::new(format!("no CUP key {}", ticket.key_id())))?;
@@ -104,6 +105,7 @@ impl Server {
             KeyId::Ecdsa(_) => (8..=72).contains(&signature.len()),
             KeyId::MlDsa44(_) => signature.len() == MLDSA44_SIGNATURE_LEN,
         };
+
         if !size_ok {
             return Err(SignError::new(format!(
                 "{}-byte signature from signer for {}",
@@ -111,6 +113,7 @@ impl Server {
                 ticket.key_id()
             )));
         }
+
         Ok(Proof(ticket.server_proof(&signature)))
     }
 

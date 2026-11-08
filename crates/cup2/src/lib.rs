@@ -118,11 +118,14 @@ impl Ticket {
     /// values and the raw request body. An empty `cup2hreq` counts as absent.
     pub fn new(cup2key: &str, cup2hreq: Option<&str>, body: &[u8]) -> Result<Self, Error> {
         let (key_id, nonce) = cup2key.split_once(':').ok_or(Error::InvalidKey)?;
+
         if nonce.is_empty() || nonce.contains(':') {
             return Err(Error::InvalidKey);
         }
+
         let key_id = key_id.parse()?;
         let request_hash: [u8; 32] = Sha256::digest(body).into();
+
         if let Some(hreq) = cup2hreq.filter(|h| !h.is_empty())
             && hex::decode(hreq).as_deref() != Some(&request_hash[..])
         {
@@ -198,9 +201,11 @@ pub fn parse_proof(value: &str) -> Option<(Vec<u8>, [u8; 32])> {
         None => value,
     };
     let (sig, hash) = value.split_once(':')?;
+
     if sig.is_empty() || hash.is_empty() {
         return None;
     }
+
     let sig = hex::decode(sig)?;
     let hash = hex::decode(hash)?.try_into().ok()?;
     Some((sig, hash))

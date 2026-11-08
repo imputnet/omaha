@@ -30,6 +30,7 @@ pub fn decode_query(query: &str, limits: &Limits) -> Result<Update2Request, Deco
     if query.len() > limits.max_body_len {
         return Err(DecodeError::TooLarge);
     }
+
     let mut client = Client::default();
     let mut lang = None;
     let mut mode = ResponseMode::Xml;
@@ -39,9 +40,11 @@ pub fn decode_query(query: &str, limits: &Limits) -> Result<Update2Request, Deco
             if xs.len() == limits.max_apps {
                 return Err(DecodeError::TooManyApps);
             }
+
             xs.push(value.into_owned());
             continue;
         }
+
         let value = Some(value.into_owned());
         match &*key {
             "os" => client.os = limits.string("os", value)?,
@@ -127,6 +130,7 @@ fn clean(s: &str) -> Cow<'_, str> {
         c if c < ' ' || matches!(c, '\u{fffe}' | '\u{ffff}') => '\u{fffd}',
         c => c,
     };
+
     if s.chars().all(|c| map(c) == c) {
         Cow::Borrowed(s)
     } else {
@@ -165,18 +169,24 @@ pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
     let mut root = BytesStart::new("gupdate");
     attr(&mut root, "xmlns", XMLNS);
     attr(&mut root, "protocol", "2.0");
+
     if let Some(server) = &response.server {
         attr(&mut root, "server", server);
     }
+
     write(&mut w, Event::Start(root));
+
     if let Some(d) = response.daystart {
         let mut daystart = BytesStart::new("daystart");
         attr(&mut daystart, "elapsed_days", &d.elapsed_days.to_string());
+
         if let Some(seconds) = d.elapsed_seconds {
             attr(&mut daystart, "elapsed_seconds", &seconds.to_string());
         }
+
         write(&mut w, Event::Empty(daystart));
     }
+
     for app in &response.apps {
         let mut element = BytesStart::new("app");
         attr(&mut element, "appid", app.appid.as_str());
@@ -207,6 +217,7 @@ fn updatecheck(u: &UpdateCheckResponse) -> BytesStart<'static> {
                 attr(&mut e, "codebase", &urls[0]);
                 attr(&mut e, "version", &nextversion.to_string());
                 attr(&mut e, "hash_sha256", &hash.to_string());
+
                 if i32::try_from(size).is_ok_and(|s| s > 0) {
                     attr(&mut e, "size", &size.to_string());
                 }
@@ -215,9 +226,11 @@ fn updatecheck(u: &UpdateCheckResponse) -> BytesStart<'static> {
         },
         Outcome::Error(err) => attr(&mut e, "status", err.as_str()),
     }
+
     if let Some(info) = &u.info {
         attr(&mut e, "info", info);
     }
+
     for (name, value) in &u.attributes {
         attr(&mut e, name.as_str(), value);
     }

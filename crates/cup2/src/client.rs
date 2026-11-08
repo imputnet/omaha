@@ -100,17 +100,21 @@ impl Client {
         if response_body.is_empty() {
             return Err(VerifyError::EmptyResponse);
         }
+
         let (signature, observed_hash) = parse_proof(proof).ok_or(VerifyError::MalformedProof)?;
         let size_ok = match self.key_id {
             KeyId::Ecdsa(_) => (8..=72).contains(&signature.len()),
             KeyId::MlDsa44(_) => signature.len() == MLDSA44_SIGNATURE_LEN,
         };
+
         if !size_ok {
             return Err(VerifyError::MalformedProof);
         }
+
         if observed_hash != request.request_hash {
             return Err(VerifyError::RequestHashMismatch);
         }
+
         let (_, nonce) = request
             .cup2key
             .split_once(':')

@@ -65,6 +65,7 @@ impl Limits {
         if v.len() > self.max_list_len {
             return Err(DecodeError::FieldTooLong(field));
         }
+
         Ok(v)
     }
 }

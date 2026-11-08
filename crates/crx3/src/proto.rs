@@ -59,10 +59,13 @@ impl<'a> Reader<'a> {
         for i in 0..max_bytes {
             let (&byte, rest) = self.buf.split_first().ok_or(DecodeError)?;
             self.buf = rest;
+
             if i == 9 && byte > 1 {
                 return Err(DecodeError);
             }
+
             value |= u64::from(byte & 0x7f) << (7 * i);
+
             if byte & 0x80 == 0 {
                 return Ok(value);
             }
@@ -74,6 +77,7 @@ impl<'a> Reader<'a> {
         if self.buf.len() < n {
             return Err(DecodeError);
         }
+
         let (head, rest) = self.buf.split_at(n);
         self.buf = rest;
         Ok(head)
@@ -85,12 +89,15 @@ impl<'a> Reader<'a> {
         if self.buf.is_empty() {
             return Ok(None);
         }
+
         let key = self.varint_max(MAX_TAG_OR_LEN_BYTES)?;
         let number = u32::try_from(key >> 3).map_err(|_| DecodeError)?;
         let wire = (key & 7) as u8;
+
         if number == 0 || number > 0x1fff_ffff {
             return Err(DecodeError);
         }
+
         let payload = match wire {
             WIRE_VARINT => {
                 self.varint()?;
@@ -102,9 +109,11 @@ impl<'a> Reader<'a> {
             }
             WIRE_LEN => {
                 let len = self.varint_max(MAX_TAG_OR_LEN_BYTES)?;
+
                 if len > MAX_LEN {
                     return Err(DecodeError);
                 }
+
                 let len = usize::try_from(len).map_err(|_| DecodeError)?;
                 self.take(len)?
             }
@@ -192,9 +201,11 @@ pub(crate) fn encode_header(header: &Header<'_>) -> Vec<u8> {
     for proof in &header.sha256_with_ecdsa {
         put_bytes(&mut out, HEADER_SHA256_WITH_ECDSA, &encode_proof(proof));
     }
+
     if let Some(vc) = header.verified_contents {
         put_bytes(&mut out, HEADER_VERIFIED_CONTENTS, vc);
     }
+
     put_bytes(
         &mut out,
         HEADER_SIGNED_HEADER_DATA,

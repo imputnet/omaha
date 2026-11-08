@@ -56,13 +56,17 @@ fn parse_prefix(prefix: &[u8; PREFIX_LEN]) -> Result<(bool, usize), SplitError> 
         _ => return Err(SplitError::BadMagic),
     };
     let version = u32::from_le_bytes(prefix[4..8].try_into().unwrap());
+
     if version != VERSION {
         return Err(SplitError::UnsupportedVersion(version));
     }
+
     let header_len = u32::from_le_bytes(prefix[8..12].try_into().unwrap()) as usize;
+
     if header_len > MAX_HEADER_LEN {
         return Err(SplitError::HeaderTooLarge);
     }
+
     Ok((diff, header_len))
 }
 
@@ -72,9 +76,11 @@ pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
     let prefix = bytes.get(..PREFIX_LEN).ok_or(SplitError::Truncated)?;
     let (diff, header_len) = parse_prefix(prefix.try_into().unwrap())?;
     let rest = &bytes[PREFIX_LEN..];
+
     if rest.len() < header_len {
         return Err(SplitError::Truncated);
     }
+
     let (header, archive) = rest.split_at(header_len);
     Ok(Crx {
         diff,

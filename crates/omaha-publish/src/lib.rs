@@ -42,9 +42,11 @@ pub fn archive_order<'a>(
         if !is_safe(path) {
             return Err(PathError::Unsafe(path.to_owned()));
         }
+
         if !seen.insert(path) {
             return Err(PathError::Duplicate(path.to_owned()));
         }
+
         out.push(path);
     }
     out.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));

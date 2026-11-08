@@ -90,6 +90,7 @@ pub fn base64(s: &str) -> Vec<u8> {
     for b in s.bytes().filter(|&b| b != b'=') {
         acc = (acc << 6) | ALPHABET.iter().position(|&a| a == b).expect("base64") as u32;
         bits += 6;
+
         if bits >= 8 {
             bits -= 8;
             out.push((acc >> bits) as u8);
@@ -114,12 +115,15 @@ fn literals(src: &str) -> Vec<(usize, String)> {
             }
             continue;
         }
+
         if c != '"' {
             if !c.is_whitespace() {
                 last_end = None;
             }
+
             continue;
         }
+
         let mut lit = String::new();
         while let Some((_, n)) = chars.next() {
             match n {
@@ -148,6 +152,7 @@ pub fn expect_eq_calls(src: &str, call: &str) -> Vec<(String, String)> {
             continue;
         };
         let lits = literals(&flat[open..]);
+
         if let [(_, expected), (_, input), ..] = lits.as_slice() {
             out.push((expected.clone(), input.clone()));
         }

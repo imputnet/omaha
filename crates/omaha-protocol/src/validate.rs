@@ -106,9 +106,11 @@ fn output(op: &Operation) -> Option<&crate::Sha256> {
 pub fn validate(response: &Response) -> Result<(), EncodeError> {
     for app in &response.apps {
         let appid = || app.appid.to_string();
+
         if !app.events.is_empty() && (app.updatecheck.is_some() || !app.data.is_empty()) {
             return Err(EncodeError::MixedPingback { appid: appid() });
         }
+
         if let Some(UpdateCheckResponse {
             outcome: Outcome::Error(e),
             ..
@@ -124,17 +126,21 @@ pub fn validate(response: &Response) -> Result<(), EncodeError> {
         else {
             continue;
         };
+
         if pipelines.is_empty() {
             return Err(EncodeError::NoPipelines { appid: appid() });
         }
+
         for p in pipelines {
             let pipeline = || p.id.clone();
+
             if p.operations.is_empty() {
                 return Err(EncodeError::EmptyPipeline {
                     appid: appid(),
                     pipeline: pipeline(),
                 });
             }
+
             for (i, op) in p.operations.iter().enumerate() {
                 match op {
                     Operation::Download { size, urls, .. } => {
@@ -151,6 +157,7 @@ pub fn validate(response: &Response) -> Result<(), EncodeError> {
                     }
                     Operation::Crx3 { input, .. } => {
                         let previous = i.checked_sub(1).and_then(|j| output(&p.operations[j]));
+
                         if previous.is_some_and(|out| out != input) {
                             return Err(EncodeError::HashMismatch {
                                 appid: appid(),

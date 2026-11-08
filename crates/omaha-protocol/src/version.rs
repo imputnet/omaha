@@ -40,11 +40,13 @@ impl FromStr for Version {
             if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
                 return Err(ParseVersionError);
             }
+
             let n: u32 = part.parse().map_err(|_| ParseVersionError)?;
             // base::Version rejects leading zeros in the first component only.
             if i == 0 && n.to_string() != part {
                 return Err(ParseVersionError);
             }
+
             components.push(n);
         }
         Ok(Version(components))
@@ -57,6 +59,7 @@ impl fmt::Display for Version {
             if i > 0 {
                 f.write_str(".")?;
             }
+
             write!(f, "{n}")?;
         }
         Ok(())

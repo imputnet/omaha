@@ -139,6 +139,7 @@ pub fn decode_request(body: &[u8], limits: &Limits) -> Result<Request, DecodeErr
     if body.len() > limits.max_body_len {
         return Err(DecodeError::TooLarge);
     }
+
     let root: WireRoot =
         serde_json::from_slice(body).map_err(|e| DecodeError::Syntax(e.to_string()))?;
     let r = root.request;
@@ -150,9 +151,11 @@ pub fn decode_request(body: &[u8], limits: &Limits) -> Result<Request, DecodeErr
             ));
         }
     }
+
     if r.apps.len() > limits.max_apps {
         return Err(DecodeError::TooManyApps);
     }
+
     let platform = r
         .platform
         .map(|p| {
@@ -250,6 +253,7 @@ fn decode_hw(v: &Value) -> Result<Hardware, DecodeError> {
     if !v.is_object() {
         return Err(DecodeError::Invalid("hw"));
     }
+
     let physmemory = match v.get("physmemory") {
         None | Some(Value::Null) => None,
         Some(m) => {
@@ -295,6 +299,7 @@ fn decode_event(v: &Value, limits: &Limits) -> Result<Event, DecodeError> {
             .and_then(Value::as_str)
             .map(str::to_owned),
     )?;
+
     if event.kind == EventType::Download {
         let unsigned = |key: &str| v.get(key).and_then(Value::as_u64);
         event.download = Some(DownloadStats {
@@ -309,6 +314,7 @@ fn decode_event(v: &Value, limits: &Limits) -> Result<Event, DecodeError> {
             )?,
         });
     }
+
     Ok(event)
 }
 
@@ -419,24 +425,30 @@ fn encode_operation(op: &Operation) -> Value {
             let mut m = Map::new();
             m.insert("type".into(), "crx3".into());
             m.insert("in".into(), hash_object(input));
+
             if let Some(size) = size {
                 m.insert("size".into(), (*size).into());
             }
+
             if let Some(path) = path {
                 m.insert("path".into(), path.as_str().into());
             }
+
             if let Some(arguments) = arguments {
                 m.insert("arguments".into(), arguments.as_str().into());
             }
+
             Value::Object(m)
         }
         Operation::Run { path, arguments } => {
             let mut m = Map::new();
             m.insert("type".into(), "run".into());
             m.insert("path".into(), path.as_str().into());
+
             if let Some(arguments) = arguments {
                 m.insert("arguments".into(), arguments.as_str().into());
             }
+
             Value::Object(m)
         }
         Operation::Other { kind } => json!({ "type": kind }),
@@ -482,9 +494,11 @@ fn encode_updatecheck(u: &UpdateCheckResponse) -> Value {
             m.insert("status".into(), e.as_str().into());
         }
     }
+
     if let Some(info) = &u.info {
         m.insert("info".into(), info.as_str().into());
     }
+
     for (name, value) in &u.attributes {
         m.insert(name.as_str().into(), value.as_str().into());
     }
@@ -496,6 +510,7 @@ fn encode_app(app: &AppResponse) -> Value {
     m.insert("appid".into(), app.appid.as_str().into());
     m.insert("status".into(), app.status.as_str().into());
     insert_cohort(&mut m, &app.cohort);
+
     if !app.data.is_empty() {
         let data = app
             .data
@@ -503,21 +518,27 @@ fn encode_app(app: &AppResponse) -> Value {
             .map(|d| {
                 let mut dm = Map::new();
                 dm.insert("name".into(), d.name.as_str().into());
+
                 if let Some(index) = &d.index {
                     dm.insert("index".into(), index.as_str().into());
                 }
+
                 dm.insert("status".into(), d.status.as_str().into());
+
                 if let Some(text) = &d.text {
                     dm.insert("#text".into(), text.as_str().into());
                 }
+
                 Value::Object(dm)
             })
             .collect::<Vec<_>>();
         m.insert("data".into(), data.into());
     }
+
     if let Some(u) = &app.updatecheck {
         m.insert("updatecheck".into(), encode_updatecheck(u));
     }
+
     if !app.events.is_empty() {
         let events = app
             .events
@@ -526,6 +547,7 @@ fn encode_app(app: &AppResponse) -> Value {
             .collect::<Vec<_>>();
         m.insert("events".into(), events.into());
     }
+
     Value::Object(m)
 }
 
@@ -535,17 +557,22 @@ pub fn encode_response(response: &Response) -> Result<Vec<u8>, EncodeError> {
     validate(response)?;
     let mut m = Map::new();
     m.insert("protocol".into(), PROTOCOL.into());
+
     if let Some(server) = &response.server {
         m.insert("server".into(), server.as_str().into());
     }
+
     if let Some(d) = response.daystart {
         let mut dm = Map::new();
         dm.insert("elapsed_days".into(), d.elapsed_days.into());
+
         if let Some(seconds) = d.elapsed_seconds {
             dm.insert("elapsed_seconds".into(), seconds.into());
         }
+
         m.insert("daystart".into(), Value::Object(dm));
     }
+
     m.insert(
         "apps".into(),
         response
@@ -573,25 +600,32 @@ fn encode_event(e: &Event) -> Value {
             m.insert(key.into(), value.into());
         }
     }
+
     if let Some(v) = &e.previous_version {
         m.insert("previousversion".into(), v.to_string().into());
     }
+
     if let Some(v) = &e.next_version {
         m.insert("nextversion".into(), v.to_string().into());
     }
+
     if let Some(id) = &e.pipeline_id {
         m.insert("pipeline_id".into(), id.as_str().into());
     }
+
     if let Some(d) = &e.download {
         if let Some(ms) = d.time_ms {
             m.insert("download_time_ms".into(), ms.into());
         }
+
         m.insert("downloaded".into(), d.downloaded.into());
         m.insert("total".into(), d.total.into());
+
         if let Some(downloader) = &d.downloader {
             m.insert("downloader".into(), downloader.as_str().into());
         }
     }
+
     Value::Object(m)
 }
 
@@ -610,13 +644,16 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
     m.insert("protocol".into(), PROTOCOL.into());
     m.insert("ismachine".into(), c.ismachine.into());
     m.insert("dedup".into(), "cr".into());
+
     if !c.acceptformat.is_empty() {
         m.insert("acceptformat".into(), c.acceptformat.join(",").into());
     }
+
     if let Some(ids) = ids {
         m.insert("sessionid".into(), ids.session_id.as_str().into());
         m.insert("requestid".into(), ids.request_id.as_str().into());
     }
+
     let strings = [
         ("@updater", &c.updater),
         ("@os", &c.os),
@@ -630,12 +667,15 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
             m.insert(key.into(), v.as_str().into());
         }
     }
+
     if c.wow64 {
         m.insert("wow64".into(), true.into());
     }
+
     if let Some(joined) = c.domainjoined {
         m.insert("domainjoined".into(), joined.into());
     }
+
     if let Some(hw) = &c.hw {
         let mut hm = Map::new();
         let flags = [
@@ -652,17 +692,22 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
                 hm.insert(key.into(), v.into());
             }
         }
+
         if let Some(gib) = hw.physmemory {
             hm.insert("physmemory".into(), gib.into());
         }
+
         m.insert("hw".into(), Value::Object(hm));
     }
+
     if let Some(v) = &c.prodversion {
         m.insert("prodversion".into(), v.to_string().into());
     }
+
     if let Some(v) = &c.updaterversion {
         m.insert("updaterversion".into(), v.to_string().into());
     }
+
     if let Some(p) = &c.platform {
         let mut pm = Map::new();
         for (key, value) in [
@@ -678,15 +723,18 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
         }
         m.insert("os".into(), Value::Object(pm));
     }
+
     let apps = request
         .apps
         .iter()
         .map(|a| {
             let mut am = Map::new();
             am.insert("appid".into(), a.appid.as_str().into());
+
             if let Some(v) = &a.version {
                 am.insert("version".into(), v.to_string().into());
             }
+
             let strings = [
                 ("ap", &a.ap),
                 ("brand", &a.brand),
@@ -701,9 +749,11 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
                 }
             }
             insert_cohort(&mut am, &a.cohort);
+
             if let Some(enabled) = a.enabled {
                 am.insert("enabled".into(), enabled.into());
             }
+
             if !a.disabled_reasons.is_empty() {
                 let reasons = a
                     .disabled_reasons
@@ -712,12 +762,14 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
                     .collect::<Vec<_>>();
                 am.insert("disabled".into(), reasons.into());
             }
+
             if !a.cached.is_empty() {
                 am.insert(
                     "cached_items".into(),
                     a.cached.iter().map(hash_object).collect::<Vec<_>>().into(),
                 );
             }
+
             if let Some(u) = &a.updatecheck {
                 let mut um = Map::new();
                 for (key, set) in [
@@ -729,11 +781,14 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
                         um.insert(key.into(), true.into());
                     }
                 }
+
                 if let Some(prefix) = &u.targetversionprefix {
                     um.insert("targetversionprefix".into(), prefix.as_str().into());
                 }
+
                 am.insert("updatecheck".into(), Value::Object(um));
             }
+
             if !a.data.is_empty() {
                 let data = a
                     .data
@@ -749,12 +804,14 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
                     .collect::<Vec<_>>();
                 am.insert("data".into(), data.into());
             }
+
             if !a.events.is_empty() {
                 am.insert(
                     "events".into(),
                     a.events.iter().map(encode_event).collect::<Vec<_>>().into(),
                 );
             }
+
             Value::Object(am)
         })
         .collect::<Vec<_>>();
@@ -841,6 +898,7 @@ fn decode_operation(v: &Value) -> Result<Operation, String> {
     if !v.is_object() {
         return Err("operation is not an object".into());
     }
+
     let kind = str_field(v, "type").ok_or("missing operation type")?;
     Ok(match kind.as_str() {
         "download" => {
@@ -889,6 +947,7 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
     if !v.is_object() {
         return Err("app is not an object".into());
     }
+
     let appid = str_field(v, "appid").ok_or("missing appid")?;
     let appid = AppId::new(appid.clone()).ok_or_else(|| format!("invalid appid {appid:?}"))?;
     let status = str_field(v, "status").ok_or_else(|| format!("{appid}: missing status"))?;
@@ -898,9 +957,11 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
         name: str_field(v, "cohortname"),
         hint: str_field(v, "cohorthint"),
     };
+
     if app.status != AppStatus::Ok {
         return Ok(app);
     }
+
     if let (Some(events), None) = (
         v.get("events").and_then(Value::as_array),
         v.get("updatecheck"),
@@ -950,6 +1011,7 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
                     if !p.is_object() {
                         return Err("pipeline is not an object".to_owned());
                     }
+
                     let operations = p
                         .get("operations")
                         .and_then(Value::as_array)
@@ -973,6 +1035,7 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
     };
     let mut check = UpdateCheckResponse::new(outcome);
     check.info = str_field(u, "info");
+
     if let Some(obj) = u.as_object() {
         for (k, val) in obj {
             if let (Some(name), Some(val)) = (AttributeName::new(k.as_str()), val.as_str()) {
@@ -980,6 +1043,7 @@ fn decode_app_response(v: &Value) -> Result<AppResponse, String> {
             }
         }
     }
+
     app.updatecheck = Some(check);
     Ok(app)
 }
