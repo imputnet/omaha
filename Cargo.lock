@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "crx3"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "cup2"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-diff"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crx3",
  "flate2",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chromium-testdata",
  "form_urlencoded",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-publish"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "crx3",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
