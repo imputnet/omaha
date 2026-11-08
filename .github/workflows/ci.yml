@@ -38,6 +38,20 @@ jobs:
       - name: check dependencies
         run: .github/scripts/deny.sh
 
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: audit workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/zizmor.sh
+
   msrv:
     name: msrv
     runs-on: ubuntu-latest
