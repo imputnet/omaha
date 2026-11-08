@@ -1,6 +1,6 @@
 //! CUP signers backed by aws-lc-rs.
 
-use crate::{KeyId, MLDSA44_SIGNATURE_LEN, SignError, Signer};
+use crate::{KeyId, MLDSA44_SIGNATURE_LEN, ProofData, SignError, Signer};
 use aws_lc_rs::encoding::AsDer;
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{
@@ -74,11 +74,11 @@ impl Signer for MlDsa44Signer {
         KeyId::MlDsa44(self.version)
     }
 
-    fn sign(&self, proof_data: &[u8; 32]) -> Result<Vec<u8>, SignError> {
+    fn sign(&self, proof_data: &ProofData) -> Result<Vec<u8>, SignError> {
         let mut sig = vec![0; MLDSA44_SIGNATURE_LEN];
         let len = self
             .key
-            .sign(proof_data, &mut sig)
+            .sign(proof_data.as_bytes(), &mut sig)
             .map_err(|e| SignError::new(e.to_string()))?;
         sig.truncate(len);
         Ok(sig)
@@ -135,10 +135,10 @@ impl Signer for EcdsaSigner {
         KeyId::Ecdsa(self.version)
     }
 
-    fn sign(&self, proof_data: &[u8; 32]) -> Result<Vec<u8>, SignError> {
+    fn sign(&self, proof_data: &ProofData) -> Result<Vec<u8>, SignError> {
         let sig = self
             .key
-            .sign(&SystemRandom::new(), proof_data)
+            .sign(&SystemRandom::new(), proof_data.as_bytes())
             .map_err(|e| SignError::new(e.to_string()))?;
         Ok(sig.as_ref().to_vec())
     }

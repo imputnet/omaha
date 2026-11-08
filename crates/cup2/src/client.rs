@@ -117,7 +117,7 @@ impl Client {
             .expect("cup2key has a nonce");
         let data = proof_data(&request.request_hash, response_body, &self.key_id, nonce);
         self.key
-            .verify_sig(&data, &signature)
+            .verify_sig(data.as_bytes(), &signature)
             .map_err(|_| VerifyError::BadSignature)
     }
 }

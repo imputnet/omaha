@@ -1,4 +1,4 @@
-use crate::{Error, KeyId, Ticket};
+use crate::{Error, KeyId, ProofData, Ticket};
 use std::fmt;
 
 /// Something that can sign CUP proof data: a key in memory, an HSM, or a
@@ -6,10 +6,10 @@ use std::fmt;
 pub trait Signer {
     /// The key ID clients ask for in `cup2key`.
     fn key_id(&self) -> KeyId;
-    /// Signs the 32-byte proof data and returns the encoded signature: DER
-    /// for ECDSA (over SHA-256 of the proof data), raw for ML-DSA-44 (over
-    /// the proof data itself, empty context).
-    fn sign(&self, proof_data: &[u8; 32]) -> Result<Vec<u8>, SignError>;
+    /// Signs the proof data and returns the encoded signature: DER for ECDSA
+    /// (over SHA-256 of the proof data), raw for ML-DSA-44 (over the proof
+    /// data itself, empty context).
+    fn sign(&self, proof_data: &ProofData) -> Result<Vec<u8>, SignError>;
 }
 
 /// A signer failed to produce a signature.
@@ -84,8 +84,8 @@ impl Server {
         request_body: &[u8],
     ) -> Result<Ticket, Error> {
         let ticket = Ticket::new(cup2key, cup2hreq, request_body)?;
-        self.signer(ticket.key_id)
-            .ok_or(Error::UnknownKey(ticket.key_id))?;
+        self.signer(ticket.key_id())
+            .ok_or(Error::UnknownKey(ticket.key_id()))?;
         Ok(ticket)
     }
 
@@ -93,8 +93,8 @@ impl Server {
     /// bytes that will be sent.
     pub fn sign(&self, ticket: &Ticket, response_body: &[u8]) -> Result<Proof, SignError> {
         let signer = self
-            .signer(ticket.key_id)
-            .ok_or_else(|| SignError::new(format!("no CUP key {}", ticket.key_id)))?;
+            .signer(ticket.key_id())
+            .ok_or_else(|| SignError::new(format!("no CUP key {}", ticket.key_id())))?;
         let signature = signer.sign(&ticket.proof_data(response_body))?;
         Ok(Proof(ticket.server_proof(&signature)))
     }

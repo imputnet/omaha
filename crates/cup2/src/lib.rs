@@ -104,12 +104,13 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// What the server keeps from a request in order to sign the response.
+/// What the server keeps from a request in order to sign the response. Only
+/// [`Ticket::new`] creates these, from the request as received.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ticket {
-    pub key_id: KeyId,
-    pub nonce: String,
-    pub request_hash: [u8; 32],
+    key_id: KeyId,
+    nonce: String,
+    request_hash: [u8; 32],
 }
 
 impl Ticket {
@@ -134,13 +135,26 @@ impl Ticket {
         })
     }
 
+    pub fn key_id(&self) -> KeyId {
+        self.key_id
+    }
+
+    pub fn nonce(&self) -> &str {
+        &self.nonce
+    }
+
+    /// SHA-256 of the request body.
+    pub fn request_hash(&self) -> &[u8; 32] {
+        &self.request_hash
+    }
+
     /// The data the server signs for `response_body`.
-    pub fn proof_data(&self, response_body: &[u8]) -> [u8; 32] {
+    pub fn proof_data(&self, response_body: &[u8]) -> ProofData {
         proof_data(&self.request_hash, response_body, &self.key_id, &self.nonce)
     }
 
     /// The `X-Cup-Server-Proof` header value for an encoded signature.
-    pub fn server_proof(&self, signature: &[u8]) -> String {
+    pub(crate) fn server_proof(&self, signature: &[u8]) -> String {
         format!(
             "{}:{}",
             hex::encode(signature),
@@ -149,17 +163,29 @@ impl Ticket {
     }
 }
 
+/// `SHA-256(SHA-256(request) || SHA-256(response) || "<key id>:<nonce>")`,
+/// the data a CUP signature covers. Only this crate creates these, so a
+/// [`Signer`] can't be handed any other hash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProofData([u8; 32]);
+
+impl ProofData {
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
 pub(crate) fn proof_data(
     request_hash: &[u8; 32],
     response_body: &[u8],
     key_id: &KeyId,
     nonce: &str,
-) -> [u8; 32] {
+) -> ProofData {
     let mut h = Sha256::new();
     h.update(request_hash);
     h.update(Sha256::digest(response_body));
     h.update(format!("{key_id}:{nonce}"));
-    h.finalize().into()
+    ProofData(h.finalize().into())
 }
 
 /// Splits a proof (`X-Cup-Server-Proof` value, or an `ETag` in the same
