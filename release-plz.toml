@@ -26,6 +26,3 @@ release = false
 name = "omaha-publish"
 release = false
 
-[[package]]
-name = "omaha-server"
-release = false
