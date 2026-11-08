@@ -92,30 +92,34 @@ pub fn decode_query(query: &str, limits: &Limits) -> Result<Update2Request, Deco
 }
 
 fn decode_x(x: &str, lang: &Option<String>, limits: &Limits) -> Result<App, DecodeError> {
-    let mut id = None;
-    let mut app_version = None;
-    let mut fields = App::new(AppId::new("x").expect("valid placeholder"));
+    let (mut id, mut version, mut installsource, mut installedby, mut ap, mut brand) =
+        (None, None, None, None, None, None);
     let mut uc = false;
     for (key, value) in form_urlencoded::parse(x.as_bytes()) {
         let value = Some(value.into_owned());
         match &*key {
             "id" => id = limits.string("id", value)?,
-            "v" => app_version = limits.string("v", value)?,
-            "installsource" => fields.installsource = limits.string("installsource", value)?,
-            "installedby" => fields.installedby = limits.string("installedby", value)?,
-            "ap" => fields.ap = limits.string("ap", value)?,
-            "brand" => fields.brand = limits.string("brand", value)?,
+            "v" => version = limits.string("v", value)?,
+            "installsource" => installsource = limits.string("installsource", value)?,
+            "installedby" => installedby = limits.string("installedby", value)?,
+            "ap" => ap = limits.string("ap", value)?,
+            "brand" => brand = limits.string("brand", value)?,
             "uc" => uc = true,
             _ => {}
         }
     }
-    fields.appid = id.and_then(AppId::new).ok_or(DecodeError::Invalid("id"))?;
-    fields.version = app_version
+
+    let mut app = App::new(id.and_then(AppId::new).ok_or(DecodeError::Invalid("id"))?);
+    app.version = version
         .map(|v| v.parse::<Version>().map_err(|_| DecodeError::Invalid("v")))
         .transpose()?;
-    fields.lang = lang.clone();
-    fields.updatecheck = uc.then(UpdateCheck::default);
-    Ok(fields)
+    app.installsource = installsource;
+    app.installedby = installedby;
+    app.ap = ap;
+    app.brand = brand;
+    app.lang = lang.clone();
+    app.updatecheck = uc.then(UpdateCheck::default);
+    Ok(app)
 }
 
 const XMLNS: &str = "http://www.google.com/update2/response";
@@ -142,8 +146,9 @@ fn attr(element: &mut BytesStart<'_>, name: &str, value: &str) {
     element.push_attribute((name, &*clean(value)));
 }
 
-fn write<'a>(w: &mut Writer<Vec<u8>>, event: impl Into<Event<'a>>) {
-    w.write_event(event).expect("writing to a Vec doesn't fail");
+fn write<'a>(w: &mut Writer<Vec<u8>>, event: impl Into<Event<'a>>) -> Result<(), EncodeError> {
+    w.write_event(event)
+        .map_err(|e| EncodeError::Serialize(e.to_string()))
 }
 
 /// The full package of an update: the first pipeline that is a plain
@@ -165,7 +170,7 @@ pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
     write(
         &mut w,
         Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
-    );
+    )?;
     let mut root = BytesStart::new("gupdate");
     attr(&mut root, "xmlns", XMLNS);
     attr(&mut root, "protocol", "2.0");
@@ -174,7 +179,7 @@ pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
         attr(&mut root, "server", server);
     }
 
-    write(&mut w, Event::Start(root));
+    write(&mut w, Event::Start(root))?;
 
     if let Some(d) = response.daystart {
         let mut daystart = BytesStart::new("daystart");
@@ -184,7 +189,7 @@ pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
             attr(&mut daystart, "elapsed_seconds", &seconds.to_string());
         }
 
-        write(&mut w, Event::Empty(daystart));
+        write(&mut w, Event::Empty(daystart))?;
     }
 
     for app in &response.apps {
@@ -193,15 +198,15 @@ pub fn encode_xml(response: &Response) -> Result<String, EncodeError> {
         attr(&mut element, "status", app.status.as_str());
         match (&app.status, &app.updatecheck) {
             (AppStatus::Ok, Some(u)) => {
-                write(&mut w, Event::Start(element));
-                write(&mut w, Event::Empty(updatecheck(u)));
-                write(&mut w, Event::End(BytesEnd::new("app")));
+                write(&mut w, Event::Start(element))?;
+                write(&mut w, Event::Empty(updatecheck(u)))?;
+                write(&mut w, Event::End(BytesEnd::new("app")))?;
             }
-            _ => write(&mut w, Event::Empty(element)),
+            _ => write(&mut w, Event::Empty(element))?,
         }
     }
-    write(&mut w, Event::End(BytesEnd::new("gupdate")));
-    Ok(String::from_utf8(w.into_inner()).expect("quick-xml writes UTF-8"))
+    write(&mut w, Event::End(BytesEnd::new("gupdate")))?;
+    String::from_utf8(w.into_inner()).map_err(|e| EncodeError::Serialize(e.to_string()))
 }
 
 fn updatecheck(u: &UpdateCheckResponse) -> BytesStart<'static> {

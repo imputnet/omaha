@@ -42,6 +42,8 @@ pub enum EncodeError {
     InvalidStatus {
         appid: String,
     },
+    /// The JSON or XML writer failed.
+    Serialize(String),
 }
 
 impl fmt::Display for EncodeError {
@@ -66,6 +68,7 @@ impl fmt::Display for EncodeError {
             EncodeError::UnknownOperation { appid, pipeline } => {
                 write!(f, "{appid}: unknown operation in pipeline {pipeline:?}")
             }
+            EncodeError::Serialize(e) => write!(f, "serializing failed: {e}"),
             EncodeError::InvalidStatus { appid } => {
                 write!(f, "{appid}: update check error with a non-error status")
             }

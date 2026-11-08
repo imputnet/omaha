@@ -36,7 +36,7 @@ mod hex;
 mod server;
 
 #[cfg(feature = "aws-lc")]
-pub use client::{Client, ClientRequest, VerifyError};
+pub use client::{Client, ClientRequest, RandomnessError, VerifyError};
 pub use server::{Proof, Server, SignError, Signer};
 
 /// A CUP key ID as it appears in `cup2key`.

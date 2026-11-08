@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use omaha_protocol::v4::{self, RequestIds};
 use omaha_protocol::*;
 
@@ -124,7 +125,7 @@ fn requests_round_trip() {
         session_id: "{s}".into(),
         request_id: "{r}".into(),
     };
-    let body = v4::encode_request(&request, Some(&ids));
+    let body = v4::encode_request(&request, Some(&ids)).unwrap();
     assert!(String::from_utf8_lossy(&body).contains("\"sessionid\":\"{s}\""));
     assert_eq!(
         v4::decode_request(&body, &Limits::default()).unwrap(),
@@ -429,8 +430,11 @@ fn decodes_and_answers_pingbacks() {
         client: Client::default(),
         apps: vec![app.clone()],
     };
-    let again =
-        v4::decode_request(&v4::encode_request(&pingback, None), &Limits::default()).unwrap();
+    let again = v4::decode_request(
+        &v4::encode_request(&pingback, None).unwrap(),
+        &Limits::default(),
+    )
+    .unwrap();
     assert_eq!(again.apps, pingback.apps);
 }
 

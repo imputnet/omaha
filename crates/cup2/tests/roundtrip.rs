@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
 use cup2::aws_lc::{EcdsaSigner, MlDsa44Signer};
@@ -23,7 +24,7 @@ fn servers() -> (Server, Client, Client) {
 fn both_schemes_round_trip() {
     let (server, mldsa, ecdsa) = servers();
     for client in [&mldsa, &ecdsa] {
-        let request = client.prepare(REQUEST);
+        let request = client.prepare(REQUEST).unwrap();
         let query = request.query();
         let (cup2key, cup2hreq) = query
             .strip_prefix("cup2key=")
@@ -39,7 +40,7 @@ fn both_schemes_round_trip() {
 #[test]
 fn rejects_tampering() {
     let (server, client, _) = servers();
-    let request = client.prepare(REQUEST);
+    let request = client.prepare(REQUEST).unwrap();
     let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
     let proof = server.sign(&ticket, RESPONSE).unwrap();
 
@@ -52,7 +53,7 @@ fn rejects_tampering() {
         Err(VerifyError::EmptyResponse)
     );
 
-    let other = client.prepare(REQUEST);
+    let other = client.prepare(REQUEST).unwrap();
     assert_eq!(
         client.verify(&other, RESPONSE, proof.as_str()),
         Err(VerifyError::BadSignature)
@@ -69,10 +70,10 @@ fn rejects_tampering() {
 #[test]
 fn signature_sizes_are_checked() {
     let (server, mldsa, ecdsa) = servers();
-    let request = ecdsa.prepare(REQUEST);
+    let request = ecdsa.prepare(REQUEST).unwrap();
     let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
     let ecdsa_proof = server.sign(&ticket, RESPONSE).unwrap();
-    let request = mldsa.prepare(REQUEST);
+    let request = mldsa.prepare(REQUEST).unwrap();
     let hash = ecdsa_proof.as_str().split(':').nth(1).unwrap();
     let wrong = format!("{}:{hash}", ecdsa_proof.as_str().split(':').next().unwrap());
     let _ = hash;
@@ -164,7 +165,7 @@ fn crosscheck() {
 #[test]
 fn empty_cup2hreq_counts_as_absent() {
     let (server, client, _) = servers();
-    let request = client.prepare(REQUEST);
+    let request = client.prepare(REQUEST).unwrap();
     assert!(server.ticket(request.cup2key(), Some(""), REQUEST).is_ok());
 }
 
@@ -183,7 +184,7 @@ fn refuses_empty_bodies_and_bad_signer_output() {
     }
 
     let (server, client, _) = servers();
-    let request = client.prepare(REQUEST);
+    let request = client.prepare(REQUEST).unwrap();
     let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
     assert!(server.sign(&ticket, b"").is_err());
 

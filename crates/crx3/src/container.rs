@@ -50,18 +50,19 @@ impl fmt::Display for SplitError {
 impl std::error::Error for SplitError {}
 
 fn parse_prefix(prefix: &[u8; PREFIX_LEN]) -> Result<(bool, usize), SplitError> {
-    let diff = match &prefix[0..4] {
-        m if m == MAGIC => false,
-        m if m == MAGIC_DIFF => true,
+    let [m0, m1, m2, m3, v0, v1, v2, v3, l0, l1, l2, l3] = *prefix;
+    let diff = match [m0, m1, m2, m3] {
+        MAGIC => false,
+        MAGIC_DIFF => true,
         _ => return Err(SplitError::BadMagic),
     };
-    let version = u32::from_le_bytes(prefix[4..8].try_into().unwrap());
+    let version = u32::from_le_bytes([v0, v1, v2, v3]);
 
     if version != VERSION {
         return Err(SplitError::UnsupportedVersion(version));
     }
 
-    let header_len = u32::from_le_bytes(prefix[8..12].try_into().unwrap()) as usize;
+    let header_len = u32::from_le_bytes([l0, l1, l2, l3]) as usize;
 
     if header_len > MAX_HEADER_LEN {
         return Err(SplitError::HeaderTooLarge);
@@ -73,9 +74,10 @@ fn parse_prefix(prefix: &[u8; PREFIX_LEN]) -> Result<(bool, usize), SplitError> 
 /// Splits a CRX3 file into header and archive. Does not parse or verify the
 /// header.
 pub fn split(bytes: &[u8]) -> Result<Crx<'_>, SplitError> {
-    let prefix = bytes.get(..PREFIX_LEN).ok_or(SplitError::Truncated)?;
-    let (diff, header_len) = parse_prefix(prefix.try_into().unwrap())?;
-    let rest = &bytes[PREFIX_LEN..];
+    let (prefix, rest) = bytes
+        .split_first_chunk::<PREFIX_LEN>()
+        .ok_or(SplitError::Truncated)?;
+    let (diff, header_len) = parse_prefix(prefix)?;
 
     if rest.len() < header_len {
         return Err(SplitError::Truncated);

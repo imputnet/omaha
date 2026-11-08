@@ -156,7 +156,7 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
         MessageHasher::new(header.signed_header_data).ok_or(VerifyError::HeaderInvalid)?;
     stream(&mut reader, |chunk| hasher.update(chunk)).map_err(|e| VerifyError::Io(e.kind()))?;
     let digest = LcDigest::import_less_safe(hasher.finish().as_bytes(), &SHA256)
-        .expect("SHA-256 digest is 32 bytes");
+        .map_err(|_| VerifyError::SignatureVerificationFailed)?;
     for (key, signature) in &checks {
         key.verify_digest_sig(&digest, signature)
             .map_err(|_| VerifyError::SignatureVerificationFailed)?;

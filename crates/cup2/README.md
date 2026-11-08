@@ -19,7 +19,7 @@ let server = Server::new().with(signer);
 
 // The client adds `cup2key` and `cup2hreq` to its request.
 let body = br#"{"request":{"protocol":"4.0"}}"#;
-let request = client.prepare(body);
+let request = client.prepare(body).expect("randomness");
 
 // The server checks them, then signs the exact response bytes it sends,
 // as the `X-Cup-Server-Proof` header.

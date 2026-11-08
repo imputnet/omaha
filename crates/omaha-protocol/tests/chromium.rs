@@ -1,5 +1,6 @@
 //! Checks against Chromium's components/update_client/protocol_parser_json_unittest.cc,
 //! read from the fetched Chromium tree.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use omaha_protocol::v4::{DecodedResponse, decode_response};
 use omaha_protocol::{AppStatus, AttributeName, Outcome};

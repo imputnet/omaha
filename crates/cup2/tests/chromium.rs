@@ -1,5 +1,6 @@
 //! Checks against Chromium's components/client_update_protocol/cup_unittest.cc,
 //! read from the fetched Chromium tree.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
 use cup2::aws_lc::MlDsa44Signer;
@@ -20,8 +21,8 @@ fn request_parameters_match_chromium() {
     let signer = MlDsa44Signer::from_pkcs8(16, &key).unwrap();
     let client = Client::new(KeyId::MlDsa44(16), signer.public_key()).unwrap();
 
-    let first = client.prepare(request.as_bytes()).query();
-    let second = client.prepare(request.as_bytes()).query();
+    let first = client.prepare(request.as_bytes()).unwrap().query();
+    let second = client.prepare(request.as_bytes()).unwrap().query();
     assert_ne!(first, second, "nonces must differ");
     for query in [first, second] {
         assert!(query.starts_with(&key_prefix), "{query}");
@@ -41,7 +42,7 @@ fn signs_with_chromium_test_key() {
     let client = Client::new(KeyId::MlDsa44(16), signer.public_key()).unwrap();
     let server = Server::new().with(signer);
 
-    let request = client.prepare(b"Request_A");
+    let request = client.prepare(b"Request_A").unwrap();
     let ticket = server
         .ticket(request.cup2key(), None, b"Request_A")
         .unwrap();

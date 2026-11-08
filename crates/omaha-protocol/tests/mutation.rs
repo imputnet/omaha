@@ -1,4 +1,5 @@
 //! Mutated requests and responses must never make the decoders panic.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use omaha_protocol::{Limits, update2, v4};
 

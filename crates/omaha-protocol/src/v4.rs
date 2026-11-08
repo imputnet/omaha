@@ -583,7 +583,8 @@ pub fn encode_response(response: &Response) -> Result<Vec<u8>, EncodeError> {
             .into(),
     );
     let mut out = SAFE_JSON_PREFIX.as_bytes().to_vec();
-    serde_json::to_writer(&mut out, &json!({ "response": m })).expect("JSON values serialize");
+    serde_json::to_writer(&mut out, &json!({ "response": m }))
+        .map_err(|e| EncodeError::Serialize(e.to_string()))?;
     Ok(out)
 }
 
@@ -638,7 +639,7 @@ pub struct RequestIds {
 }
 
 /// Encodes a request body, as a client would send it.
-pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
+pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Result<Vec<u8>, EncodeError> {
     let c = &request.client;
     let mut m = Map::new();
     m.insert("protocol".into(), PROTOCOL.into());
@@ -816,7 +817,7 @@ pub fn encode_request(request: &Request, ids: Option<&RequestIds>) -> Vec<u8> {
         })
         .collect::<Vec<_>>();
     m.insert("apps".into(), apps.into());
-    serde_json::to_vec(&json!({ "request": m })).expect("JSON values serialize")
+    serde_json::to_vec(&json!({ "request": m })).map_err(|e| EncodeError::Serialize(e.to_string()))
 }
 
 /// A decoded response. Like Chromium, apps that fail to parse are skipped and

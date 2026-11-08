@@ -16,6 +16,7 @@ pub struct Client {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientRequest {
     cup2key: String,
+    nonce: String,
     request_hash: [u8; 32],
 }
 
@@ -60,6 +61,18 @@ impl fmt::Display for VerifyError {
 
 impl std::error::Error for VerifyError {}
 
+/// The system's random number generator failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RandomnessError;
+
+impl fmt::Display for RandomnessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("system randomness unavailable")
+    }
+}
+
+impl std::error::Error for RandomnessError {}
+
 impl Client {
     /// A client pinning `spki` (DER SubjectPublicKeyInfo) under `key_id`.
     pub fn new(key_id: KeyId, spki: &[u8]) -> Result<Self, KeyError> {
@@ -73,18 +86,19 @@ impl Client {
 
     /// Prepares a request with a random nonce: 32 bytes, base64url without
     /// padding, like Chromium.
-    pub fn prepare(&self, request_body: &[u8]) -> ClientRequest {
+    pub fn prepare(&self, request_body: &[u8]) -> Result<ClientRequest, RandomnessError> {
         let mut nonce = [0u8; 32];
         SystemRandom::new()
             .fill(&mut nonce)
-            .expect("system randomness");
-        self.prepare_with_nonce(request_body, &base64url(&nonce))
+            .map_err(|_| RandomnessError)?;
+        Ok(self.prepare_with_nonce(request_body, &base64url(&nonce)))
     }
 
     /// Prepares a request with a given nonce, for tests.
     pub fn prepare_with_nonce(&self, request_body: &[u8], nonce: &str) -> ClientRequest {
         ClientRequest {
             cup2key: format!("{}:{nonce}", self.key_id),
+            nonce: nonce.to_owned(),
             request_hash: Sha256::digest(request_body).into(),
         }
     }
@@ -115,11 +129,12 @@ impl Client {
             return Err(VerifyError::RequestHashMismatch);
         }
 
-        let (_, nonce) = request
-            .cup2key
-            .split_once(':')
-            .expect("cup2key has a nonce");
-        let data = proof_data(&request.request_hash, response_body, &self.key_id, nonce);
+        let data = proof_data(
+            &request.request_hash,
+            response_body,
+            &self.key_id,
+            &request.nonce,
+        );
         self.key
             .verify_sig(data.as_bytes(), &signature)
             .map_err(|_| VerifyError::BadSignature)

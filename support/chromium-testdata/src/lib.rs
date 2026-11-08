@@ -1,6 +1,7 @@
 //! Chromium's own test data, fetched by `scripts/fetch-chromium-testdata`
 //! into `testdata/chromium/<revision>/`. Without it, functions here return
 //! `None` and print a note, unless `OMAHA_REQUIRE_CHROMIUM_TESTDATA` is set.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::path::PathBuf;
 

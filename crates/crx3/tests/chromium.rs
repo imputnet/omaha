@@ -1,5 +1,6 @@
 //! Checks against Chromium's own tests and test files
 //! (components/crx_file/*_unittest.cc), read from the fetched Chromium tree.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
 use crx3::{

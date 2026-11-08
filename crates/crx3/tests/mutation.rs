@@ -1,4 +1,5 @@
 //! Mutated CRX files must never make parsing or verification panic.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
 use crx3::aws_lc::{EcdsaSigner, RsaSigner};
