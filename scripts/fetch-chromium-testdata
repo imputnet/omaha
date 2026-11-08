@@ -17,13 +17,18 @@ components/test/data/crx_file/valid_test_publisher.crx3
 root=$(cd "$(dirname "$0")/.." && pwd)
 dest="$root/testdata/chromium/$REV"
 
+fetch() {
+    curl -fsSL --retry 5 --retry-all-errors -o "$2.b64" \
+        "https://chromium.googlesource.com/chromium/src/+/$REV/$1?format=TEXT"
+    base64 -d < "$2.b64" > "$2.tmp"
+    rm "$2.b64"
+    mv "$2.tmp" "$2"
+}
+
 for file in $FILES; do
     mkdir -p "$dest/$(dirname "$file")"
-    curl -fsSL "https://chromium.googlesource.com/chromium/src/+/$REV/$file?format=TEXT" \
-        | base64 -d > "$dest/$file.tmp"
-    mv "$dest/$file.tmp" "$dest/$file"
+    fetch "$file" "$dest/$file"
 done
-curl -fsSL "https://chromium.googlesource.com/chromium/src/+/$REV/LICENSE?format=TEXT" \
-    | base64 -d > "$dest/LICENSE"
+fetch LICENSE "$dest/LICENSE"
 
 echo "fetched Chromium $REV test data into $dest"
