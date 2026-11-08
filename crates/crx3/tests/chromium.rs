@@ -31,17 +31,11 @@ fn expected() -> Option<Expected> {
     })
 }
 
-const PUBLISHER: Policy = Policy {
-    required_keys: &[],
-    any_of: &[WEBSTORE_PUBLISHER_KEY_HASH],
-};
-const PUBLISHER_OR_TEST: Policy = Policy {
-    required_keys: &[],
-    any_of: &[
-        WEBSTORE_PUBLISHER_KEY_HASH,
-        WEBSTORE_PUBLISHER_TEST_KEY_HASH,
-    ],
-};
+const PUBLISHER: Policy = Policy::new().any_of(&[WEBSTORE_PUBLISHER_KEY_HASH]);
+const PUBLISHER_OR_TEST: Policy = Policy::new().any_of(&[
+    WEBSTORE_PUBLISHER_KEY_HASH,
+    WEBSTORE_PUBLISHER_TEST_KEY_HASH,
+]);
 
 #[test]
 fn id_vectors() {
@@ -87,24 +81,15 @@ fn checks_required_key_hashes() {
     };
     let good = [key_hash(&e.ojj_key)];
     assert_eq!(
-        verify(
-            &file,
-            &Policy {
-                required_keys: &good,
-                any_of: &[]
-            }
-        )
-        .unwrap()
-        .id,
+        verify(&file, &Policy::new().required_keys(&good))
+            .unwrap()
+            .id,
         e.ojj_id
     );
     assert_eq!(
         verify(
             &file,
-            &Policy {
-                required_keys: &[crx3::KeyHash::from_bytes([0; 32])],
-                any_of: &[]
-            }
+            &Policy::new().required_keys(&[crx3::KeyHash::from_bytes([0; 32])])
         ),
         Err(VerifyError::RequiredProofMissing)
     );

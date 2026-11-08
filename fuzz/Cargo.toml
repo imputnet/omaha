@@ -10,6 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 crx3 = { path = "../crates/crx3" }
+cup2 = { path = "../crates/cup2" }
 omaha-protocol = { path = "../crates/omaha-protocol" }
 omaha-server = { path = "../crates/omaha-server", default-features = false }
 
@@ -44,6 +45,13 @@ bench = false
 [[bin]]
 name = "index"
 path = "fuzz_targets/index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cup2"
+path = "fuzz_targets/cup2.rs"
 test = false
 doc = false
 bench = false

@@ -145,6 +145,7 @@ mod enabled {
         let algorithm = match key {
             cup2::KeyId::Ecdsa(_) => "ecdsa-p256",
             cup2::KeyId::MlDsa44(_) => "ml-dsa-44",
+            _ => "other",
         };
         metrics::counter!("omaha_cup_signatures_total", "algorithm" => algorithm).increment(1);
     }

@@ -25,10 +25,7 @@ fn mutated_files_never_panic() {
     let dev = RsaSigner::generate().unwrap();
     let publisher = EcdsaSigner::generate().unwrap();
     let pinned = [key_hash(publisher.public_key())];
-    let policy = Policy {
-        required_keys: &[],
-        any_of: &pinned,
-    };
+    let policy = Policy::new().any_of(&pinned);
     let archive = vec![0x42; 12 * 1024];
     let rsa = Builder::new().signer(&dev).build(&archive).unwrap();
     let both = append_proof(&rsa, &publisher).unwrap();

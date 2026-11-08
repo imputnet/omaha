@@ -68,7 +68,7 @@ impl std::error::Error for VerifyError {}
 
 /// The system's random number generator failed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RandomnessError;
+pub struct RandomnessError(());
 
 impl fmt::Display for RandomnessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,7 +95,7 @@ impl Client {
         let mut nonce = [0u8; 32];
         SystemRandom::new()
             .fill(&mut nonce)
-            .map_err(|_| RandomnessError)?;
+            .map_err(|_| RandomnessError(()))?;
         Ok(self.prepare_with_nonce(request_body, &base64url(&nonce)))
     }
 

@@ -61,7 +61,7 @@ pub enum Algorithm {
 /// remote signing service.
 ///
 /// Signers only ever see the SHA-256 of the signed data, never the archive.
-pub trait Signer {
+pub trait Signer: Send + Sync {
     /// The proof type this signer produces, which picks the header field its
     /// proof goes in.
     fn algorithm(&self) -> Algorithm;

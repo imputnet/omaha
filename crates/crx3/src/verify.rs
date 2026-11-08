@@ -14,6 +14,7 @@ use std::io::{self, Read};
 
 /// Extra requirements on top of a valid developer proof.
 #[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
 pub struct Policy<'a> {
     /// Every one of these keys must have a valid proof.
     pub required_keys: &'a [KeyHash],
@@ -23,8 +24,31 @@ pub struct Policy<'a> {
     pub any_of: &'a [KeyHash],
 }
 
+impl<'a> Policy<'a> {
+    /// Only a valid developer proof is required.
+    pub const fn new() -> Self {
+        Policy {
+            required_keys: &[],
+            any_of: &[],
+        }
+    }
+
+    /// Requires a valid proof by every one of `keys`.
+    pub const fn required_keys(mut self, keys: &'a [KeyHash]) -> Self {
+        self.required_keys = keys;
+        self
+    }
+
+    /// Requires a valid proof by at least one of `keys`, if non-empty.
+    pub const fn any_of(mut self, keys: &'a [KeyHash]) -> Self {
+        self.any_of = keys;
+        self
+    }
+}
+
 /// A verified CRX3 file.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Verified {
     /// The extension ID.
     pub id: String,

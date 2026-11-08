@@ -20,7 +20,7 @@
 //! [`Client`] verifies proofs.
 
 // Compile and run the README example as a doctest.
-#[cfg(doctest)]
+#[cfg(all(doctest, feature = "aws-lc"))]
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
@@ -41,6 +41,7 @@ pub use server::{Proof, Server, SignError, Signer};
 
 /// A CUP key ID as it appears in `cup2key`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum KeyId {
     /// ECDSA P-256, e.g. `8`. Signs SHA-256 of the proof data, DER encoded.
     Ecdsa(u32),
@@ -61,14 +62,14 @@ fn parse_key_version(s: &str) -> Option<u32> {
 }
 
 impl FromStr for KeyId {
-    type Err = Error;
+    type Err = TicketError;
 
-    fn from_str(s: &str) -> Result<Self, Error> {
+    fn from_str(s: &str) -> Result<Self, TicketError> {
         match s.strip_prefix(MLDSA44_PREFIX) {
             Some(v) => parse_key_version(v).map(KeyId::MlDsa44),
             None => parse_key_version(s).map(KeyId::Ecdsa),
         }
-        .ok_or(Error::InvalidKey)
+        .ok_or(TicketError::InvalidKey)
     }
 }
 
@@ -84,7 +85,7 @@ impl fmt::Display for KeyId {
 /// Why a request's `cup2key` or `cup2hreq` was rejected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Error {
+pub enum TicketError {
     /// `cup2key` is not `<key id>:<nonce>` with a valid key ID.
     InvalidKey,
     /// The requested key ID is valid, but the server has no such key.
@@ -93,17 +94,17 @@ pub enum Error {
     RequestHashMismatch,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for TicketError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::InvalidKey => f.write_str("invalid cup2key"),
-            Error::UnknownKey(id) => write!(f, "no CUP key {id}"),
-            Error::RequestHashMismatch => f.write_str("cup2hreq does not match the request"),
+            TicketError::InvalidKey => f.write_str("invalid cup2key"),
+            TicketError::UnknownKey(id) => write!(f, "no CUP key {id}"),
+            TicketError::RequestHashMismatch => f.write_str("cup2hreq does not match the request"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for TicketError {}
 
 /// What the server keeps from a request in order to sign the response. Only
 /// [`Ticket::new`] creates these, from the request as received.
@@ -117,11 +118,11 @@ pub struct Ticket {
 impl Ticket {
     /// Builds a ticket from the `cup2key` and optional `cup2hreq` query
     /// values and the raw request body. An empty `cup2hreq` counts as absent.
-    pub fn new(cup2key: &str, cup2hreq: Option<&str>, body: &[u8]) -> Result<Self, Error> {
-        let (key_id, nonce) = cup2key.split_once(':').ok_or(Error::InvalidKey)?;
+    pub fn new(cup2key: &str, cup2hreq: Option<&str>, body: &[u8]) -> Result<Self, TicketError> {
+        let (key_id, nonce) = cup2key.split_once(':').ok_or(TicketError::InvalidKey)?;
 
         if nonce.is_empty() || nonce.contains(':') {
-            return Err(Error::InvalidKey);
+            return Err(TicketError::InvalidKey);
         }
 
         let key_id = key_id.parse()?;
@@ -130,7 +131,7 @@ impl Ticket {
         if let Some(hreq) = cup2hreq.filter(|h| !h.is_empty())
             && hex::decode(hreq).as_deref() != Some(&request_hash[..])
         {
-            return Err(Error::RequestHashMismatch);
+            return Err(TicketError::RequestHashMismatch);
         }
         Ok(Ticket {
             key_id,
@@ -200,7 +201,8 @@ pub(crate) fn proof_data(
 /// Splits a proof (`X-Cup-Server-Proof` value, or an `ETag` in the same
 /// format, optionally weak and quoted) into signature and request hash, the
 /// way Chromium parses it.
-pub fn parse_proof(value: &str) -> Option<(Vec<u8>, [u8; 32])> {
+#[cfg(any(feature = "aws-lc", test))]
+pub(crate) fn parse_proof(value: &str) -> Option<(Vec<u8>, [u8; 32])> {
     let value = value.strip_prefix("W/").unwrap_or(value);
     let value = match value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
         Some(inner) => inner,
@@ -234,26 +236,33 @@ mod tests {
             "ML-DSA-44-016",
             "ML-DSA-65-1",
         ] {
-            assert_eq!(bad.parse::<KeyId>(), Err(Error::InvalidKey), "{bad:?}");
+            assert_eq!(
+                bad.parse::<KeyId>(),
+                Err(TicketError::InvalidKey),
+                "{bad:?}"
+            );
         }
         assert_eq!(KeyId::MlDsa44(16).to_string(), "ML-DSA-44-16");
     }
 
     #[test]
     fn tickets() {
-        assert_eq!(Ticket::new("8", None, b""), Err(Error::InvalidKey));
-        assert_eq!(Ticket::new("8:", None, b""), Err(Error::InvalidKey));
-        assert_eq!(Ticket::new("8:1:2", None, b""), Err(Error::InvalidKey));
+        assert_eq!(Ticket::new("8", None, b""), Err(TicketError::InvalidKey));
+        assert_eq!(Ticket::new("8:", None, b""), Err(TicketError::InvalidKey));
+        assert_eq!(
+            Ticket::new("8:1:2", None, b""),
+            Err(TicketError::InvalidKey)
+        );
         let hreq = hex::encode(&Sha256::digest(b"body"));
         assert!(Ticket::new("8:1", Some(&hreq), b"body").is_ok());
         assert!(Ticket::new("8:1", Some(&hreq.to_uppercase()), b"body").is_ok());
         assert_eq!(
             Ticket::new("8:1", Some(&hreq), b"other"),
-            Err(Error::RequestHashMismatch)
+            Err(TicketError::RequestHashMismatch)
         );
         assert_eq!(
             Ticket::new("8:1", Some("zz"), b"body"),
-            Err(Error::RequestHashMismatch)
+            Err(TicketError::RequestHashMismatch)
         );
     }
 

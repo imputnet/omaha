@@ -4,7 +4,7 @@
 #![cfg(feature = "aws-lc")]
 
 use cup2::aws_lc::{EcdsaSigner, MlDsa44Signer};
-use cup2::{Client, Error, KeyId, Server, VerifyError};
+use cup2::{Client, KeyId, Server, TicketError, VerifyError};
 
 const REQUEST: &[u8] = br#"{"request":{"protocol":"4.0"}}"#;
 const RESPONSE: &[u8] = br#")]}'
@@ -90,11 +90,11 @@ fn unknown_keys_are_refused() {
     let (server, _, _) = servers();
     assert_eq!(
         server.ticket("ML-DSA-44-17:nonce", None, REQUEST),
-        Err(Error::UnknownKey(KeyId::MlDsa44(17)))
+        Err(TicketError::UnknownKey(KeyId::MlDsa44(17)))
     );
     assert_eq!(
         server.ticket("9:nonce", None, REQUEST),
-        Err(Error::UnknownKey(KeyId::Ecdsa(9)))
+        Err(TicketError::UnknownKey(KeyId::Ecdsa(9)))
     );
 }
 

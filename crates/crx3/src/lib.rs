@@ -27,7 +27,7 @@
 //! bits.
 
 // Compile the README example as a doctest.
-#[cfg(doctest)]
+#[cfg(all(doctest, feature = "aws-lc"))]
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 

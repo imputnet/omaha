@@ -282,10 +282,7 @@ async fn run(command: Command) -> Result<()> {
                         .map_err(|_| format!("--key-hash {h}: expected 64 hex digits"))
                 })
                 .collect::<std::result::Result<Vec<_>, _>>()?;
-            let policy = crx3::Policy {
-                required_keys: &required,
-                any_of: &[],
-            };
+            let policy = crx3::Policy::new().required_keys(&required);
             let verified = crx3::verify(&bytes, &policy)?;
 
             if let Some(dir) = &files {

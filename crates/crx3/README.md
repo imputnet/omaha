@@ -23,7 +23,7 @@ let crx = Builder::new()
 
 // Require a valid developer proof and a proof by the store's key.
 let pinned = [key_hash(store.public_key())];
-let verified = verify(&crx, &Policy { required_keys: &[], any_of: &pinned })
+let verified = verify(&crx, &Policy::new().any_of(&pinned))
     .expect("valid crx");
 println!("extension id: {}", verified.id);
 ```
@@ -37,6 +37,10 @@ the signed data, so keys can live in an HSM or a remote signing service.
 
 - `aws-lc` (default): RSA and ECDSA P-256 signers and verification, backed
   by [aws-lc-rs](https://crates.io/crates/aws-lc-rs).
+
+The minimum supported Rust version is 1.95. Raising it is a minor version
+bump, and the minimum stays at least six months behind the latest stable
+release.
 
 ## License
 

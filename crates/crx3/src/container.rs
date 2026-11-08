@@ -18,6 +18,7 @@ const PREFIX_LEN: usize = 12;
 
 /// A CRX3 file split into its parts, borrowing from the input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Crx<'a> {
     /// Whether this is a differential update (`CrOD`).
     pub diff: bool,

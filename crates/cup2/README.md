@@ -39,6 +39,10 @@ a remote signing service.
 - `aws-lc` (default): ML-DSA-44 and ECDSA P-256 signers and the client,
   backed by [aws-lc-rs](https://crates.io/crates/aws-lc-rs).
 
+The minimum supported Rust version is 1.95. Raising it is a minor version
+bump, and the minimum stays at least six months behind the latest stable
+release.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or

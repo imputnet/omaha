@@ -32,14 +32,7 @@ fn ecdsa_developer_key_and_publisher() {
         .build(ARCHIVE)
         .unwrap();
     let pinned = [key_hash(publisher.public_key())];
-    let v = verify(
-        &crx,
-        &Policy {
-            required_keys: &[],
-            any_of: &pinned,
-        },
-    )
-    .unwrap();
+    let v = verify(&crx, &Policy::new().any_of(&pinned)).unwrap();
     assert_eq!(v.id, id_from_public_key(dev.public_key()));
     assert_eq!(v.verified_contents.as_deref(), Some(&b"vc"[..]));
 }
@@ -49,10 +42,7 @@ fn append_publisher_proof_to_developer_crx() {
     let dev = RsaSigner::generate().unwrap();
     let publisher = EcdsaSigner::generate().unwrap();
     let pinned = [key_hash(publisher.public_key())];
-    let policy = Policy {
-        required_keys: &[],
-        any_of: &pinned,
-    };
+    let policy = Policy::new().any_of(&pinned);
 
     let crx = Builder::new().signer(&dev).build(ARCHIVE).unwrap();
     assert_eq!(
@@ -73,24 +63,9 @@ fn required_keys_need_their_own_proofs() {
     let crx = append_proof(&Builder::new().signer(&dev).build(ARCHIVE).unwrap(), &extra).unwrap();
     let have = [key_hash(extra.public_key())];
     let lack = [key_hash(absent.public_key())];
-    assert!(
-        verify(
-            &crx,
-            &Policy {
-                required_keys: &have,
-                any_of: &[]
-            }
-        )
-        .is_ok()
-    );
+    assert!(verify(&crx, &Policy::new().required_keys(&have)).is_ok());
     assert_eq!(
-        verify(
-            &crx,
-            &Policy {
-                required_keys: &lack,
-                any_of: &[]
-            }
-        ),
+        verify(&crx, &Policy::new().required_keys(&lack)),
         Err(VerifyError::RequiredProofMissing)
     );
 }
@@ -235,14 +210,7 @@ fn streams_large_archives() {
     assert_eq!(v.file_sha256, <[u8; 32]>::from(hasher.finalize()));
 
     let pinned = [key_hash(publisher.public_key())];
-    let v = crx3::verify_reader(
-        &appended[..],
-        &Policy {
-            required_keys: &[],
-            any_of: &pinned,
-        },
-    )
-    .unwrap();
+    let v = crx3::verify_reader(&appended[..], &Policy::new().any_of(&pinned)).unwrap();
     assert_eq!(v.id, id_from_public_key(dev.public_key()));
     std::fs::remove_file(&path).unwrap();
 }

@@ -391,7 +391,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crx3"
-version = "0.3.1"
+version = "1.0.0"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "cup2"
-version = "0.3.1"
+version = "1.0.0"
 dependencies = [
  "aws-lc-rs",
  "chromium-testdata",
