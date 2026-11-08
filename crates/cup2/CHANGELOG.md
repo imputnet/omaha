@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/imputnet/omaha/compare/cup2-v0.1.0...cup2-v0.2.0) - 2026-11-08
+
+### Changed
+
+- move chromium test data helper into a crate
+- sign only typed proof data
+
+### Removed
+
+- remove redundant comments
+
 ## [0.1.0](https://github.com/imputnet/omaha/compare/cup2-v0.0.1...cup2-v0.1.0) - 2026-11-08
 
 ### Changed
