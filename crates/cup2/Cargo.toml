@@ -4,6 +4,7 @@ description = "Chromium's Client Update Protocol (CUP2): signing and verifying u
 version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
+exclude = ["tests/chromium.rs"]
 license.workspace = true
 repository.workspace = true
 keywords = ["chromium", "cup", "omaha", "signature"]
@@ -19,3 +20,6 @@ aws-lc = ["dep:aws-lc-rs"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+chromium-testdata.workspace = true

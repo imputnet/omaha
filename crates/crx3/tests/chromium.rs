@@ -2,8 +2,6 @@
 //! (components/crx_file/*_unittest.cc), read from the fetched Chromium tree.
 #![cfg(feature = "aws-lc")]
 
-mod common;
-
 use crx3::{
     Policy, VerifyError, WEBSTORE_PUBLISHER_KEY_HASH, WEBSTORE_PUBLISHER_TEST_KEY_HASH,
     id_from_public_key, key_hash, verify,
@@ -12,7 +10,7 @@ use crx3::{
 const DATA: &str = "components/test/data/crx_file";
 
 fn crx(name: &str) -> Option<Vec<u8>> {
-    common::bytes(&format!("{DATA}/{name}"))
+    chromium_testdata::bytes(&format!("{DATA}/{name}"))
 }
 
 struct Expected {
@@ -23,28 +21,13 @@ struct Expected {
 }
 
 fn expected() -> Option<Expected> {
-    let src = common::text("components/crx_file/crx_verifier_unittest.cc")?;
+    let src = chromium_testdata::text("components/crx_file/crx_verifier_unittest.cc")?;
     Some(Expected {
-        ojj_id: common::string_constant(&src, "kOjjHash"),
-        ojj_key: base64(&common::string_constant(&src, "kOjjKey")),
-        jln_id: common::string_constant(&src, "kJlnHash"),
-        jln_key: base64(&common::string_constant(&src, "kJlnKey")),
+        ojj_id: chromium_testdata::string_constant(&src, "kOjjHash"),
+        ojj_key: chromium_testdata::base64(&chromium_testdata::string_constant(&src, "kOjjKey")),
+        jln_id: chromium_testdata::string_constant(&src, "kJlnHash"),
+        jln_key: chromium_testdata::base64(&chromium_testdata::string_constant(&src, "kJlnKey")),
     })
-}
-
-fn base64(s: &str) -> Vec<u8> {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = Vec::new();
-    let (mut acc, mut bits) = (0u32, 0);
-    for b in s.bytes().filter(|&b| b != b'=') {
-        acc = (acc << 6) | ALPHABET.iter().position(|&a| a == b).expect("base64") as u32;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-        }
-    }
-    out
 }
 
 const PUBLISHER: Policy = Policy {
@@ -61,10 +44,10 @@ const PUBLISHER_OR_TEST: Policy = Policy {
 
 #[test]
 fn id_vectors() {
-    let Some(src) = common::text("components/crx_file/id_util_unittest.cc") else {
+    let Some(src) = chromium_testdata::text("components/crx_file/id_util_unittest.cc") else {
         return;
     };
-    let vectors = common::expect_eq_calls(&src, "GenerateId");
+    let vectors = chromium_testdata::expect_eq_calls(&src, "GenerateId");
     assert!(vectors.len() >= 3, "found {vectors:?}");
     for (id, input) in vectors {
         assert_eq!(

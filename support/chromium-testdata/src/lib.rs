@@ -1,8 +1,6 @@
-//! Access to Chromium's own test data, fetched by
-//! `scripts/fetch-chromium-testdata` into `testdata/chromium/<revision>/`.
-//! Without it, tests using it are skipped, unless
-//! `OMAHA_REQUIRE_CHROMIUM_TESTDATA` is set.
-#![allow(dead_code)]
+//! Chromium's own test data, fetched by `scripts/fetch-chromium-testdata`
+//! into `testdata/chromium/<revision>/`. Without it, functions here return
+//! `None` and print a note, unless `OMAHA_REQUIRE_CHROMIUM_TESTDATA` is set.
 
 use std::path::PathBuf;
 
@@ -24,8 +22,7 @@ fn root() -> PathBuf {
     }
 }
 
-/// Reads a file from the Chromium tree, or `None` (with a note) if the test
-/// data hasn't been fetched.
+/// Reads a file from the Chromium tree.
 pub fn bytes(path: &str) -> Option<Vec<u8>> {
     let full = root().join(path);
     match std::fs::read(&full) {
@@ -41,8 +38,56 @@ pub fn bytes(path: &str) -> Option<Vec<u8>> {
     }
 }
 
+/// Reads a source file from the Chromium tree.
 pub fn text(path: &str) -> Option<String> {
     bytes(path).map(|b| String::from_utf8(b).expect("utf-8 source"))
+}
+
+fn find_constant(src: &str, name: &str) -> usize {
+    [format!("{name}[] ="), format!("{name} =")]
+        .iter()
+        .find_map(|needle| src.find(needle.as_str()))
+        .unwrap_or_else(|| panic!("{name} not found"))
+}
+
+/// The value of a string constant, `NAME[] = "..." "...";` or
+/// `NAME = "...";`, with adjacent literals joined.
+pub fn string_constant(src: &str, name: &str) -> String {
+    let start = find_constant(src, name);
+    literals(&src[start..])
+        .into_iter()
+        .next()
+        .expect("literal")
+        .1
+}
+
+/// The bytes of `NAME = std::to_array<uint8_t>({0x.., ...});`.
+pub fn byte_array(src: &str, name: &str) -> Vec<u8> {
+    let start = find_constant(src, name);
+    let open = start + src[start..].find('{').expect("array start");
+    let close = open + src[open..].find('}').expect("array end");
+    src[open + 1..close]
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| u8::from_str_radix(t.trim_start_matches("0x"), 16).expect("hex byte"))
+        .collect()
+}
+
+/// Decodes standard base64, as Chromium's tests use for keys.
+pub fn base64(s: &str) -> Vec<u8> {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0);
+    for b in s.bytes().filter(|&b| b != b'=') {
+        acc = (acc << 6) | ALPHABET.iter().position(|&a| a == b).expect("base64") as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
 }
 
 /// The C++ string literals in `src`, in order, with adjacent literals
@@ -82,18 +127,6 @@ fn literals(src: &str) -> Vec<(usize, String)> {
         last_end = Some(());
     }
     out
-}
-
-/// The value of `constexpr char NAME[] = "..." "...";`.
-pub fn string_constant(src: &str, name: &str) -> String {
-    let start = src
-        .find(&format!("{name}[] ="))
-        .unwrap_or_else(|| panic!("{name} not found"));
-    literals(&src[start..])
-        .into_iter()
-        .next()
-        .expect("literal")
-        .1
 }
 
 /// Pairs `(expected, input)` from every `EXPECT_EQ("expected", call("input"))`.

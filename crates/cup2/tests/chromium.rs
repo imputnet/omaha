@@ -2,8 +2,6 @@
 //! read from the fetched Chromium tree.
 #![cfg(feature = "aws-lc")]
 
-mod common;
-
 use cup2::aws_lc::MlDsa44Signer;
 use cup2::{Client, KeyId, Server};
 
@@ -11,14 +9,14 @@ const UNITTEST: &str = "components/client_update_protocol/cup_unittest.cc";
 
 #[test]
 fn request_parameters_match_chromium() {
-    let Some(src) = common::text(UNITTEST) else {
+    let Some(src) = chromium_testdata::text(UNITTEST) else {
         return;
     };
-    let request = common::string_constant(&src, "kRequest");
-    let hash_suffix = common::string_constant(&src, "kRequestHashWithName");
-    let key_prefix = common::string_constant(&src, "kKeyIdWithName");
+    let request = chromium_testdata::string_constant(&src, "kRequest");
+    let hash_suffix = chromium_testdata::string_constant(&src, "kRequestHashWithName");
+    let key_prefix = chromium_testdata::string_constant(&src, "kKeyIdWithName");
 
-    let key = common::byte_array(&src, "kCupTestPrivateKeyInfo");
+    let key = chromium_testdata::byte_array(&src, "kCupTestPrivateKeyInfo");
     let signer = MlDsa44Signer::from_pkcs8(16, &key).unwrap();
     let client = Client::new(KeyId::MlDsa44(16), signer.public_key()).unwrap();
 
@@ -35,10 +33,10 @@ fn request_parameters_match_chromium() {
 
 #[test]
 fn signs_with_chromium_test_key() {
-    let Some(src) = common::text(UNITTEST) else {
+    let Some(src) = chromium_testdata::text(UNITTEST) else {
         return;
     };
-    let key = common::byte_array(&src, "kCupTestPrivateKeyInfo");
+    let key = chromium_testdata::byte_array(&src, "kCupTestPrivateKeyInfo");
     let signer = MlDsa44Signer::from_pkcs8(16, &key).unwrap();
     let client = Client::new(KeyId::MlDsa44(16), signer.public_key()).unwrap();
     let server = Server::new().with(signer);
