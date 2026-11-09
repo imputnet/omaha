@@ -131,3 +131,44 @@ impl Signer for EcdsaSigner {
         Ok(sig.as_ref().to_vec())
     }
 }
+
+/// Whichever signer a PKCS#8 key is for: ECDSA P-256, else RSA.
+pub struct AnySigner(Inner);
+
+enum Inner {
+    Ecdsa(EcdsaSigner),
+    Rsa(RsaSigner),
+}
+
+impl AnySigner {
+    /// Loads a PKCS#8 DER private key of either algorithm.
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, KeyError> {
+        match EcdsaSigner::from_pkcs8(der) {
+            Ok(signer) => Ok(AnySigner(Inner::Ecdsa(signer))),
+            Err(_) => RsaSigner::from_pkcs8(der)
+                .map(|signer| AnySigner(Inner::Rsa(signer)))
+                .map_err(|_| key_err("not an ECDSA P-256 or RSA PKCS#8 key")),
+        }
+    }
+
+    fn signer(&self) -> &dyn Signer {
+        match &self.0 {
+            Inner::Ecdsa(signer) => signer,
+            Inner::Rsa(signer) => signer,
+        }
+    }
+}
+
+impl Signer for AnySigner {
+    fn algorithm(&self) -> Algorithm {
+        self.signer().algorithm()
+    }
+
+    fn public_key(&self) -> &[u8] {
+        self.signer().public_key()
+    }
+
+    fn sign(&self, digest: &SignedDataDigest) -> Result<Vec<u8>, SignError> {
+        self.signer().sign(digest)
+    }
+}

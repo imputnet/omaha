@@ -143,3 +143,48 @@ impl Signer for EcdsaSigner {
         Ok(sig.as_ref().to_vec())
     }
 }
+
+/// Whichever signer a PKCS#8 key is for: ML-DSA-44, else ECDSA P-256.
+pub struct AnySigner(Inner);
+
+enum Inner {
+    MlDsa44(MlDsa44Signer),
+    Ecdsa(EcdsaSigner),
+}
+
+impl AnySigner {
+    /// Loads a PKCS#8 DER private key of either algorithm, served as key
+    /// version `version`.
+    pub fn from_pkcs8(version: u32, der: &[u8]) -> Result<Self, KeyError> {
+        match MlDsa44Signer::from_pkcs8(version, der) {
+            Ok(signer) => Ok(AnySigner(Inner::MlDsa44(signer))),
+            Err(_) => EcdsaSigner::from_pkcs8(version, der)
+                .map(|signer| AnySigner(Inner::Ecdsa(signer)))
+                .map_err(|_| key_err("not an ML-DSA-44 or ECDSA P-256 PKCS#8 key")),
+        }
+    }
+
+    /// The public key as DER SubjectPublicKeyInfo.
+    pub fn public_key(&self) -> &[u8] {
+        match &self.0 {
+            Inner::MlDsa44(signer) => signer.public_key(),
+            Inner::Ecdsa(signer) => signer.public_key(),
+        }
+    }
+}
+
+impl Signer for AnySigner {
+    fn key_id(&self) -> KeyId {
+        match &self.0 {
+            Inner::MlDsa44(signer) => signer.key_id(),
+            Inner::Ecdsa(signer) => signer.key_id(),
+        }
+    }
+
+    fn sign(&self, proof_data: &ProofData) -> Result<Vec<u8>, SignError> {
+        match &self.0 {
+            Inner::MlDsa44(signer) => signer.sign(proof_data),
+            Inner::Ecdsa(signer) => signer.sign(proof_data),
+        }
+    }
+}

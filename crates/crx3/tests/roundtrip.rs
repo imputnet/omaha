@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
-use crx3::aws_lc::{EcdsaSigner, RsaSigner};
+use crx3::aws_lc::{AnySigner, EcdsaSigner, RsaSigner};
 use crx3::{
     Builder, Policy, Signer, VerifyError, append_proof, id_from_public_key, key_hash, verify,
 };
@@ -213,4 +213,22 @@ fn streams_large_archives() {
     let v = crx3::verify_reader(&appended[..], &Policy::new().any_of(&pinned)).unwrap();
     assert_eq!(v.id, id_from_public_key(dev.public_key()));
     std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn loads_either_kind_of_key() {
+    let ecdsa = EcdsaSigner::generate().unwrap();
+    let rsa = RsaSigner::generate().unwrap();
+
+    for (der, spki) in [
+        (ecdsa.to_pkcs8().unwrap(), ecdsa.public_key()),
+        (rsa.to_pkcs8().unwrap(), rsa.public_key()),
+    ] {
+        let signer = AnySigner::from_pkcs8(&der).unwrap();
+        assert_eq!(signer.public_key(), spki);
+        let crx = Builder::new().signer(&signer).build(ARCHIVE).unwrap();
+        assert_eq!(verify(&crx, &Policy::default()).unwrap().public_key, spki);
+    }
+
+    assert!(AnySigner::from_pkcs8(b"not a key").is_err());
 }

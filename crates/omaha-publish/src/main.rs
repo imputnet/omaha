@@ -3,6 +3,7 @@
 //! storage.
 
 use clap::{Args, Parser, Subcommand};
+use crx3::Signer as _;
 use object_store::ObjectStore;
 use object_store::local::LocalFileSystem;
 use object_store::prefix::PrefixStore;
@@ -226,14 +227,11 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn crx_signer(path: &Path) -> Result<Box<dyn crx3::Signer>> {
-    let der = read_pem(path, "PRIVATE KEY")?;
-
-    if let Ok(rsa) = crx3::aws_lc::RsaSigner::from_pkcs8(&der) {
-        return Ok(Box::new(rsa));
-    }
-
-    Ok(Box::new(crx3::aws_lc::EcdsaSigner::from_pkcs8(&der)?))
+fn crx_signer(path: &Path) -> Result<crx3::aws_lc::AnySigner> {
+    Ok(crx3::aws_lc::AnySigner::from_pkcs8(&read_pem(
+        path,
+        "PRIVATE KEY",
+    )?)?)
 }
 
 fn create_private(path: &Path, contents: &str) -> Result<()> {
@@ -318,7 +316,7 @@ async fn run(command: Command) -> Result<()> {
                 compression(stored),
             )?;
             let signer = crx_signer(&key)?;
-            let crx = crx3::Builder::new().signer(signer.as_ref()).build(&zip)?;
+            let crx = crx3::Builder::new().signer(&signer).build(&zip)?;
             std::fs::write(&out, &crx)?;
             let verified = crx3::verify(&crx, &crx3::Policy::default())?;
             println!("{} {} bytes", verified.id, crx.len());

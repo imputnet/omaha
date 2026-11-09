@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "aws-lc")]
 
-use cup2::aws_lc::{EcdsaSigner, MlDsa44Signer};
+use cup2::aws_lc::{AnySigner, EcdsaSigner, MlDsa44Signer};
 use cup2::{Client, KeyId, Server, TicketError, VerifyError};
 
 const REQUEST: &[u8] = br#"{"request":{"protocol":"4.0"}}"#;
@@ -193,4 +193,22 @@ fn refuses_empty_bodies_and_bad_signer_output() {
     let raw = Server::new().with(RawEcdsa);
     let ticket = raw.ticket("8:nonce", None, REQUEST).unwrap();
     assert!(raw.sign(&ticket, RESPONSE).is_err());
+}
+
+#[test]
+fn loads_either_kind_of_key() {
+    let mldsa = MlDsa44Signer::generate(16).unwrap().to_pkcs8().unwrap();
+    let ecdsa = EcdsaSigner::generate(8).unwrap().to_pkcs8().unwrap();
+
+    for (der, id) in [(mldsa, KeyId::MlDsa44(16)), (ecdsa, KeyId::Ecdsa(16))] {
+        let signer = AnySigner::from_pkcs8(16, &der).unwrap();
+        let client = Client::new(id, signer.public_key()).unwrap();
+        let server = Server::new().with(signer);
+        let request = client.prepare(REQUEST).unwrap();
+        let ticket = server.ticket(request.cup2key(), None, REQUEST).unwrap();
+        let proof = server.sign(&ticket, RESPONSE).unwrap();
+        client.verify(&request, RESPONSE, proof.as_str()).unwrap();
+    }
+
+    assert!(AnySigner::from_pkcs8(1, b"not a key").is_err());
 }

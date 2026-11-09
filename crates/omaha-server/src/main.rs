@@ -105,14 +105,10 @@ fn cup_server(keys: &[String]) -> Result<Option<cup2::Server>> {
             .parse()
             .map_err(|_| format!("--cup-key {key}: invalid version"))?;
         let der = read_pem(Path::new(path), "PRIVATE KEY")?;
-
-        server = match cup2::aws_lc::MlDsa44Signer::from_pkcs8(version, &der) {
-            Ok(signer) => server.with(signer),
-            Err(_) => server.with(
-                cup2::aws_lc::EcdsaSigner::from_pkcs8(version, &der)
-                    .map_err(|e| format!("--cup-key {key}: {e}"))?,
-            ),
-        };
+        server = server.with(
+            cup2::aws_lc::AnySigner::from_pkcs8(version, &der)
+                .map_err(|e| format!("--cup-key {key}: {e}"))?,
+        );
     }
 
     Ok(Some(server))
