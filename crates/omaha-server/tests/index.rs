@@ -478,3 +478,27 @@ fn refuses_oversized_envelopes() {
         Err(OpenError::Envelope(e)) if e.contains("16 MiB")
     ));
 }
+
+#[test]
+fn answers_from_releases_kept_elsewhere() {
+    let releases = [release("1", 1), release("2", 2)];
+    let index = index(releases.to_vec());
+    let from_slice = omaha_server::index::answer(
+        &releases,
+        Protocol::V4,
+        &client(),
+        &app(Some("1")),
+        &bases(),
+    );
+    assert_eq!(from_slice, answer(&index, &client(), &app(Some("1"))));
+    assert_eq!(
+        outcome(&omaha_server::index::answer(
+            &[],
+            Protocol::V4,
+            &client(),
+            &app(None),
+            &bases()
+        )),
+        &Outcome::NoUpdate
+    );
+}

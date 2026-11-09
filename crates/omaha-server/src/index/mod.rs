@@ -41,6 +41,7 @@ mod answer;
 pub mod aws_lc;
 mod envelope;
 
+pub use answer::answer;
 pub use envelope::{KeyId, OpenError, SignError, Signer, SigningInput, Verifier};
 
 use omaha_protocol::{AppId, AttributeName, Sha256, Version};

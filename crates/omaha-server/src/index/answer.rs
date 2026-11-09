@@ -56,18 +56,9 @@ fn with_outcome(mut answer: AppResponse, outcome: Outcome) -> AppResponse {
 }
 
 impl Index {
-    /// Answers one app's update check. Paths are joined to each of `bases`
-    /// in turn, which should end in `/`, to give the download URLs.
-    ///
-    /// - Offers the highest release whose requirements the client meets
-    ///   and that matches `targetversionprefix`.
-    /// - Offers it only if it is newer than the installed version, the
-    ///   same version with `sameversionupdate`, or older with
-    ///   `rollback_allowed`.
-    /// - Puts a patch pipeline before the full one when the client has the
-    ///   patch's source in `cached` and accepts its format.
-    /// - Answers `error-osnotsupported` or `error-hwnotsupported` when no
-    ///   release supports the client's OS or architecture.
+    /// Answers one app's update check from its releases in this index, as
+    /// [`answer`] does, or with `error-unknownApplication` if the index
+    /// doesn't have the app.
     pub fn answer(
         &self,
         protocol: Protocol,
@@ -75,73 +66,96 @@ impl Index {
         app: &App,
         bases: &[String],
     ) -> AppResponse {
-        let Some(releases) = self.apps.get(&app.appid) else {
-            return AppResponse::new(app.appid.clone(), AppStatus::UnknownApplication);
-        };
-
-        let answer = AppResponse::new(app.appid.clone(), AppStatus::Ok);
-
-        let Some(check) = &app.updatecheck else {
-            return answer;
-        };
-
-        if check.updatedisabled {
-            return with_outcome(answer, Outcome::NoUpdate);
+        match self.apps.get(&app.appid) {
+            Some(releases) => answer(releases, protocol, client, app, bases),
+            None => AppResponse::new(app.appid.clone(), AppStatus::UnknownApplication),
         }
-
-        let prefix = check.targetversionprefix.as_deref().unwrap_or_default();
-        let mut best: Option<&Release> = None;
-        let mut os_supported = false;
-        let mut hw_supported = false;
-
-        for release in releases {
-            let reason = unmet(&release.requires, client);
-            os_supported |= reason != Some(Unmet::Os);
-            hw_supported |= !matches!(reason, Some(Unmet::Os | Unmet::Arch));
-
-            if reason.is_none()
-                && matches_prefix(&release.version, prefix)
-                && best.is_none_or(|b| release.version > b.version)
-            {
-                best = Some(release);
-            }
-        }
-
-        let Some(release) = best else {
-            let outcome = match (releases.is_empty(), os_supported, hw_supported) {
-                (false, false, _) => Outcome::Error(UpdateCheckError::OsNotSupported),
-                (false, true, false) => Outcome::Error(UpdateCheckError::HwNotSupported),
-                _ => Outcome::NoUpdate,
-            };
-            return with_outcome(answer, outcome);
-        };
-
-        let offer = match &app.version {
-            None => true,
-            Some(installed) if release.version == *installed => check.sameversionupdate,
-            Some(installed) if release.version < *installed => check.rollback_allowed,
-            Some(_) => true,
-        };
-
-        if !offer {
-            return with_outcome(answer, Outcome::NoUpdate);
-        }
-
-        let outcome = match pipelines(protocol, client, app, release, bases) {
-            Some(pipelines) => Outcome::Update {
-                nextversion: release.version.clone(),
-                pipelines,
-            },
-            None => Outcome::Error(UpdateCheckError::Inexpressible),
-        };
-        let mut answer = with_outcome(answer, outcome);
-
-        if let Some(updatecheck) = &mut answer.updatecheck {
-            updatecheck.attributes = release.attributes.clone();
-        }
-
-        answer
     }
+}
+
+/// Answers one app's update check from that app's releases, for sources
+/// that keep releases elsewhere than in an [`Index`]. Paths are joined to
+/// each of `bases` in turn, which should end in `/`, to give the download
+/// URLs.
+///
+/// - Offers the highest release whose requirements the client meets and
+///   that matches `targetversionprefix`.
+/// - Offers it only if it is newer than the installed version, the same
+///   version with `sameversionupdate`, or older with `rollback_allowed`.
+/// - Puts a patch pipeline before the full one when the client has the
+///   patch's source in `cached` and accepts its format.
+/// - Answers `error-osnotsupported` or `error-hwnotsupported` when no
+///   release supports the client's OS or architecture, and `noupdate` when
+///   there are no releases.
+pub fn answer(
+    releases: &[Release],
+    protocol: Protocol,
+    client: &Client,
+    app: &App,
+    bases: &[String],
+) -> AppResponse {
+    let answer = AppResponse::new(app.appid.clone(), AppStatus::Ok);
+
+    let Some(check) = &app.updatecheck else {
+        return answer;
+    };
+
+    if check.updatedisabled {
+        return with_outcome(answer, Outcome::NoUpdate);
+    }
+
+    let prefix = check.targetversionprefix.as_deref().unwrap_or_default();
+    let mut best: Option<&Release> = None;
+    let mut os_supported = false;
+    let mut hw_supported = false;
+
+    for release in releases {
+        let reason = unmet(&release.requires, client);
+        os_supported |= reason != Some(Unmet::Os);
+        hw_supported |= !matches!(reason, Some(Unmet::Os | Unmet::Arch));
+
+        if reason.is_none()
+            && matches_prefix(&release.version, prefix)
+            && best.is_none_or(|b| release.version > b.version)
+        {
+            best = Some(release);
+        }
+    }
+
+    let Some(release) = best else {
+        let outcome = match (releases.is_empty(), os_supported, hw_supported) {
+            (false, false, _) => Outcome::Error(UpdateCheckError::OsNotSupported),
+            (false, true, false) => Outcome::Error(UpdateCheckError::HwNotSupported),
+            _ => Outcome::NoUpdate,
+        };
+        return with_outcome(answer, outcome);
+    };
+
+    let offer = match &app.version {
+        None => true,
+        Some(installed) if release.version == *installed => check.sameversionupdate,
+        Some(installed) if release.version < *installed => check.rollback_allowed,
+        Some(_) => true,
+    };
+
+    if !offer {
+        return with_outcome(answer, Outcome::NoUpdate);
+    }
+
+    let outcome = match pipelines(protocol, client, app, release, bases) {
+        Some(pipelines) => Outcome::Update {
+            nextversion: release.version.clone(),
+            pipelines,
+        },
+        None => Outcome::Error(UpdateCheckError::Inexpressible),
+    };
+    let mut answer = with_outcome(answer, outcome);
+
+    if let Some(updatecheck) = &mut answer.updatecheck {
+        updatecheck.attributes = release.attributes.clone();
+    }
+
+    answer
 }
 
 fn download(file: &File, bases: &[String]) -> Operation {
