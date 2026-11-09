@@ -1,28 +1,22 @@
 //! `omaha-server`: answers update checks from a signed release index.
 
 use clap::{Args, Parser, Subcommand};
-use hyper::server::conn::http1;
-use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use object_store::path::Path as StorePath;
 use object_store::{ObjectStore, ObjectStoreExt};
 use omaha_server::index::MAX_ENVELOPE_LEN;
 use omaha_server::index::aws_lc::EcdsaKey;
-use omaha_server::{Endpoint, Replaced, StaticIndex};
+use omaha_server::{Endpoint, Replaced, ServeOptions, StaticIndex};
 use std::error::Error;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::Semaphore;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
-const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Serve Chromium's update protocols from a signed release index.
 #[derive(Parser)]
@@ -269,40 +263,17 @@ async fn serve(args: ServeArgs) -> Result<()> {
 
     let listener = TcpListener::bind(listen).await?;
     eprintln!("listening on {}", listener.local_addr()?);
-    let stop = shutdown();
-    tokio::pin!(stop);
-
-    let slots = Arc::new(Semaphore::new(max_connections.max(1)));
-
-    loop {
-        let (permit, accepted) = tokio::select! {
-            permit = slots.clone().acquire_owned() => {
-                let permit = permit?;
-                tokio::select! {
-                    accepted = listener.accept() => (permit, accepted),
-                    _ = &mut stop => return Ok(()),
-                }
-            }
-            _ = &mut stop => return Ok(()),
-        };
-        let stream = match accepted {
-            Ok((stream, _)) => stream,
-            Err(e) => {
-                eprintln!("accept: {e}");
-                tokio::time::sleep(ACCEPT_BACKOFF).await;
-                continue;
-            }
-        };
-        let service = TowerToHyperService::new(endpoint.clone());
-        tokio::spawn(async move {
-            let connection = http1::Builder::new()
-                .timer(TokioTimer::new())
-                .header_read_timeout(HEADER_TIMEOUT)
-                .serve_connection(TokioIo::new(stream), service);
-            let _ = tokio::time::timeout(CONNECTION_TIMEOUT, connection).await;
-            drop(permit);
-        });
-    }
+    let options = ServeOptions::default()
+        .max_connections(max_connections)
+        .connection_timeout(Some(CONNECTION_TIMEOUT));
+    omaha_server::serve(
+        listener,
+        TowerToHyperService::new(endpoint),
+        options,
+        shutdown(),
+    )
+    .await;
+    Ok(())
 }
 
 #[tokio::main]

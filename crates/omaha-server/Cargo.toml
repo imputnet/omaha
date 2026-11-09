@@ -30,7 +30,7 @@ aws-lc-rs = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "macros", "net", "time", "signal"] }
 hyper = { workspace = true, optional = true }
-hyper-util = { workspace = true, optional = true, features = ["service"] }
+hyper-util = { workspace = true, optional = true, features = ["service", "server-graceful", "http1"] }
 object_store = { workspace = true, optional = true, features = ["fs", "aws", "http"] }
 url = { workspace = true, optional = true }
 pem-rfc7468 = { workspace = true, optional = true }
@@ -42,15 +42,14 @@ default = ["aws-lc"]
 aws-lc = ["dep:aws-lc-rs"]
 metrics = ["dep:metrics"]
 activity = ["metrics", "omaha-protocol/activity"]
+serve = ["dep:tokio", "dep:hyper", "dep:hyper-util"]
 cli = [
     "aws-lc",
     "activity",
     "dep:metrics-exporter-prometheus",
     "cup2/aws-lc",
+    "serve",
     "dep:clap",
-    "dep:tokio",
-    "dep:hyper",
-    "dep:hyper-util",
     "dep:object_store",
     "dep:url",
     "dep:pem-rfc7468",
@@ -62,7 +61,7 @@ metrics-util = { workspace = true, features = ["debugging"] }
 tempfile.workspace = true
 pem-rfc7468.workspace = true
 cup2 = { workspace = true, features = ["aws-lc"] }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "io-util"] }
 
 [lints]
 workspace = true
@@ -87,3 +86,7 @@ required-features = ["cli"]
 [[test]]
 name = "metrics"
 required-features = ["activity"]
+
+[[test]]
+name = "connections"
+required-features = ["serve"]

@@ -51,6 +51,10 @@ pipeline first when the client has a CRX to patch from. `StaticIndex` serves
 one as a source and swaps in newer ones while the server runs, refusing
 older serials.
 
+With the `serve` feature, `serve` runs an endpoint, or any hyper service,
+over HTTP/1.1 with a connection limit, header and connection timeouts, and
+graceful shutdown.
+
 ## Serving a feed
 
 With the `cli` feature, `omaha-server serve` answers update checks from a

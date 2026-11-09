@@ -13,6 +13,9 @@
 //! The [`index`] module defines a signed list of releases and answers
 //! update checks from it. [`StaticIndex`] serves one and swaps in new ones
 //! while the server runs.
+//!
+//! With the `serve` feature, `serve()` runs a service over HTTP/1.1 with
+//! connection limits, timeouts and graceful shutdown.
 
 // Compile the README example as a doctest.
 #[cfg(doctest)]
@@ -23,10 +26,14 @@ mod endpoint;
 pub mod index;
 pub mod metrics;
 mod router;
+#[cfg(feature = "serve")]
+mod serve;
 mod source;
 mod static_index;
 
 pub use endpoint::{Endpoint, EndpointBuilder};
 pub use router::{Route, Router, Split};
+#[cfg(feature = "serve")]
+pub use serve::{ServeOptions, serve};
 pub use source::{BoxFuture, Check, PingSink, Source};
 pub use static_index::{ReplaceError, Replaced, StaticIndex, StaticIndexBuilder};
