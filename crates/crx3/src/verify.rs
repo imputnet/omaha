@@ -1,5 +1,4 @@
 use crate::container::{MessageHasher, ReadError, contains_zip_token, read_header, stream};
-use crate::id::id_from_hash;
 use crate::key::{KeyHash, key_hash};
 use crate::proto::{decode_header, decode_signed_data};
 use aws_lc_rs::digest::{Digest as LcDigest, SHA256};
@@ -168,7 +167,7 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
         let hash = key_hash(proof.public_key);
 
         if crx_id.len() == 16 && hash.as_bytes()[..16] == *crx_id {
-            developer_key = Some(proof.public_key);
+            developer_key = Some((proof.public_key, hash));
         }
 
         missing.retain(|k| **k != hash);
@@ -176,7 +175,7 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
         checks.push((parse_key(alg, proof.public_key)?, proof.signature));
     }
 
-    let developer_key = developer_key.ok_or(VerifyError::RequiredProofMissing)?;
+    let (developer_key, developer_hash) = developer_key.ok_or(VerifyError::RequiredProofMissing)?;
 
     if !missing.is_empty() || (!policy.any_of.is_empty() && !found_any_of) {
         return Err(VerifyError::RequiredProofMissing);
@@ -193,7 +192,7 @@ pub fn verify_reader(reader: impl Read, policy: &Policy<'_>) -> Result<Verified,
     }
 
     Ok(Verified {
-        id: id_from_hash(crx_id),
+        id: developer_hash.id(),
         public_key: developer_key.to_vec(),
         verified_contents: header.verified_contents.map(<[u8]>::to_vec),
         diff,

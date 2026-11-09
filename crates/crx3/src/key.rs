@@ -16,6 +16,17 @@ impl KeyHash {
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// The extension ID Chromium derives from the key: the first 128 bits
+    /// of this hash, one hex digit per character, mapped from `0-f` to
+    /// `a-p`.
+    pub fn id(&self) -> String {
+        self.0[..16]
+            .iter()
+            .flat_map(|b| [b >> 4, b & 0xf])
+            .map(|nibble| char::from(b'a' + nibble))
+            .collect()
+    }
 }
 
 impl fmt::Debug for KeyHash {
@@ -29,6 +40,12 @@ impl fmt::Debug for KeyHash {
 /// The hash of a key, as Chromium computes it.
 pub fn key_hash(spki: &[u8]) -> KeyHash {
     KeyHash(Sha256::digest(spki).into())
+}
+
+/// The ID Chromium derives from a public key (DER SubjectPublicKeyInfo).
+/// Same as `crx_file::id_util::GenerateId`.
+pub fn id_from_public_key(spki: &[u8]) -> String {
+    key_hash(spki).id()
 }
 
 /// SHA-256 of the data a CRX3 proof covers. Only this crate creates these,
@@ -93,5 +110,19 @@ impl fmt::Display for SignError {
 impl std::error::Error for SignError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&*self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ids() {
+        assert_eq!(id_from_public_key(b""), "odlameecjipmbmbejkplpemijjgpljce");
+        assert_eq!(
+            id_from_public_key(b"omaha"),
+            "ebhhafipeanicpeogeinobdedodnfgke"
+        );
     }
 }

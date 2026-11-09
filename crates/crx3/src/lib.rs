@@ -33,7 +33,6 @@ struct ReadmeDoctests;
 
 mod container;
 mod create;
-mod id;
 mod key;
 mod proto;
 #[cfg(feature = "aws-lc")]
@@ -44,8 +43,9 @@ pub mod aws_lc;
 
 pub use container::{Crx, MAGIC, MAGIC_DIFF, MAX_HEADER_LEN, SIGNATURE_CONTEXT, SplitError, split};
 pub use create::{AppendError, BuildError, Builder, append_proof, append_proof_to};
-pub use id::{id_from_hash, id_from_public_key};
-pub use key::{Algorithm, KeyHash, SignError, SignedDataDigest, Signer, key_hash};
+pub use key::{
+    Algorithm, KeyHash, SignError, SignedDataDigest, Signer, id_from_public_key, key_hash,
+};
 #[cfg(feature = "aws-lc")]
 pub use verify::{Policy, Verified, VerifyError, verify, verify_reader};
 
