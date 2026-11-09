@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1](https://github.com/imputnet/omaha/compare/crx3-v2.0.0...crx3-v2.0.1) - 2026-11-09
+
+### Changed
+
+- crx3, cup2: load either key type from pkcs8
+
 ## [2.0.0](https://github.com/imputnet/omaha/compare/crx3-v1.0.0...crx3-v2.0.0) - 2026-11-09
 
 ### Changed

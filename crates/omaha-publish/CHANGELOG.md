@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/imputnet/omaha/compare/omaha-publish-v0.2.2...omaha-publish-v0.2.3) - 2026-11-09
+
+### Changed
+
+- crx3, cup2: load either key type from pkcs8
+
 ## [0.2.2](https://github.com/imputnet/omaha/compare/omaha-publish-v0.2.1...omaha-publish-v0.2.2) - 2026-11-09
 
 ### Changed
