@@ -42,8 +42,8 @@ omaha-protocol = { path = "crates/omaha-protocol", version = "0.3.0" }
 crx3 = { path = "crates/crx3", version = "2.0.0" }
 cup2 = { path = "crates/cup2", version = "1.0.0", default-features = false }
 omaha-diff = { path = "crates/omaha-diff", version = "0.1.2" }
-omaha-server = { path = "crates/omaha-server", version = "0.1.5" }
-omaha-publish = { path = "crates/omaha-publish", version = "0.2.1", default-features = false }
+omaha-server = { path = "crates/omaha-server", version = "0.1.6" }
+omaha-publish = { path = "crates/omaha-publish", version = "0.2.2", default-features = false }
 chromium-testdata = { path = "support/chromium-testdata" }
 
 [workspace.lints.rust]

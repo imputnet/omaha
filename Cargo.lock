@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "omaha"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crx3",
  "cup2",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-publish"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap",
  "crx3",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "omaha-server"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
